@@ -12,6 +12,8 @@
      },
      storageKey: "mygame.bindings",   // rebinding persists here (localStorage)
    });
+   local multiplayer: one input per player — GameInput.create({ actions, padIndex: 1, keyboard: false, mouse: false })
+                 (padIndex picks one controller; keyboard/mouse/touch: false ignores those devices for this player)
    every frame:  input.update(dt);  then  input.vec("move") {x,y} · input.down/pressed/released("jump") · input.held("jump") seconds
                  input.buffered("jump", 0.12) (pressed within the window; consumes it) · input.value("aim") 0..1
    ui actions:   "ui_confirm" / "ui_back" are built in and follow the platform convention (Switch: A=east confirms).
@@ -126,15 +128,16 @@
 
     const T = o.target, doc = T.document;
     const onKey = (down) => (e) => {
+      if (o.keyboard === false) return;
       if (capture && down) { e.preventDefault(); return capture(e.code === "Escape" ? null : e.code); }
       if (down) keys.add(e.code); else keys.delete(e.code);
       if (down) setDevice("keyboard");
       if (boundKeys().has(e.code) && !e.ctrlKey && !e.metaKey) e.preventDefault();   // arrows/space must not scroll the page
     };
     const kd = onKey(true), ku = onKey(false), blur = () => { keys.clear(); mouseBtn.clear(); };
-    const md = (e) => { if (capture) { e.preventDefault(); return capture("mouse:" + e.button); } mouseBtn.add(e.button); setDevice("keyboard"); };
+    const md = (e) => { if (o.mouse === false) return; if (capture) { e.preventDefault(); return capture("mouse:" + e.button); } mouseBtn.add(e.button); setDevice("keyboard"); };
     const mu = (e) => mouseBtn.delete(e.button);
-    const mm = (e) => { mouse.dx += e.movementX || 0; mouse.dy += e.movementY || 0; mouse.x = e.clientX; mouse.y = e.clientY; };
+    const mm = (e) => { if (o.mouse === false) return; mouse.dx += e.movementX || 0; mouse.dy += e.movementY || 0; mouse.x = e.clientX; mouse.y = e.clientY; };
     const wh = (e) => { mouse.wheel += Math.sign(e.deltaY); };
     const cm = (e) => { if (boundMouse(2)) e.preventDefault(); };
     if (T.addEventListener) {
@@ -146,7 +149,7 @@
     function boundKeys() { const s = new Set(); for (const a of Object.values(actions)) for (const b of list(a)) { if (COMPOSITE[b]) COMPOSITE[b].forEach((k) => s.add(k)); else if (!/[:]/.test(b) && !["lstick", "rstick", "dpad", "mouse", "touchstick"].includes(b)) s.add(b); } return s; }
     function boundMouse(n) { return Object.values(actions).some((a) => list(a).includes("mouse:" + n)); }
     const list = (a) => (Array.isArray(a) ? a : a.axis || a.buttons || []);
-    const livePads = () => { try { return [...(T.navigator && T.navigator.getGamepads ? T.navigator.getGamepads() : [])].filter((p) => p && p.connected !== false); } catch { return []; } };
+    const livePads = () => { try { return [...(T.navigator && T.navigator.getGamepads ? T.navigator.getGamepads() : [])].filter((p) => p && p.connected !== false && (o.padIndex == null || p.index === o.padIndex)); } catch { return []; } };
 
     /* ---------- touch overlay: a floating stick on the left half, buttons bottom-right ---------- */
     let overlay = null;

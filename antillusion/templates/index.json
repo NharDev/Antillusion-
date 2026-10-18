@@ -1,5 +1,13 @@
 [
   {
+    "name": "shooter-splitscreen",
+    "title": "3D first-person arena shooter for two local players on a split screen (three.js): M16, sniper with scope, Desert Eagle, pistol — recoil, spread, aim-down-sights, headshots, reloads, respawns, kill feed, score to win, per-player HUD, gamepad (Xbox/PlayStation/Switch) + keyboard/mouse, synthesized gun sounds, soldier models",
+    "tags": "shooter fps first person shooting gun guns weapon weapons sniper rifle m16 ak pistol deagle desert eagle split screen splitscreen local multiplayer coop versus pvp arena deathmatch counter strike call of duty valorant 3d game three.js gamepad شوتر لعبه تصويب اطلاق نار رصاص سلاح اسلحه قناص سنايبر بندقيه مسدس ديزيرت ايجل ام 16 شاشه مقسومه لاعبين محليين لاعبين اثنين متعدد اللاعبين معركه حرب جنود",
+    "run": "serve_static (ES modules + three.js from unpkg; needs internet). Entry: index.html. Click Start (pointer lock for player 1).",
+    "notes": "game.js: CONFIG (killsToWin, movement, look speeds, split vertical/horizontal, loadout, weapons table: damage, head multiplier, rpm, auto, mag, reload, spread, aimSpread, recoil, zoom, scope) · buildWorld (arena boxes = colliders; add cover with add(x,y,z,w,h,d,mat)) · buildSoldier (the model the other player sees) · buildViewModel (first-person gun per weapon) · Player · moveAndCollide · fire (hitscan, headshots) · HUD drawn in index.html. Add a weapon: an entry in CONFIG.weapons + loadout + a branch in buildViewModel. Inputs: input.js (GameInput) — P1 keyboard+mouse, P2 first gamepad (two pads → one each); bindings in index.html. Debug: window.game (players, state, fire, restart).",
+    "strong": "شوتر shooter fps قناص سنايبر sniper split screen شاشه مقسومه counter strike"
+  },
+  {
     "name": "voxel-game",
     "title": "Minecraft-like 3D voxel game in the browser (three.js): infinite chunked terrain with trees, walking/jumping/flying physics, break and place blocks, hotbar",
     "tags": "minecraft voxel block blocks 3d game three.js sandbox world craft mine cube ماينكرافت ماين كرافت مكعبات لعبه العاب ثلاثيه ابعاد عالم مفتوح بناء تعدين متصفح",

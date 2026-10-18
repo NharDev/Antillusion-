@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Split Arena</title>
+<style>
+  :root { --text: #f1f2f4; --muted: #a3a8b0; --p1: #5b8de0; --p2: #e0775b; --font: "Segoe UI", system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #000; color: var(--text); font: 14px var(--font); user-select: none; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .half { position: fixed; pointer-events: none; overflow: hidden; }
+  .half.split-line { box-shadow: inset 0 0 0 1px rgba(0,0,0,.6); }
+  .cross { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+  .cross i { position: absolute; background: rgba(255,255,255,.9); box-shadow: 0 0 2px rgba(0,0,0,.8); }
+  .cross i:nth-child(1), .cross i:nth-child(2) { width: 2px; height: 9px; left: -1px; } .cross i:nth-child(3), .cross i:nth-child(4) { height: 2px; width: 9px; top: -1px; }
+  .hitm { position: absolute; left: 50%; top: 50%; width: 22px; height: 22px; margin: -11px; opacity: 0; transition: opacity .08s; }
+  .hitm::before, .hitm::after { content: ""; position: absolute; left: 50%; top: 0; width: 2px; height: 100%; background: #fff; transform: rotate(45deg); } .hitm::after { transform: rotate(-45deg); }
+  .hitm.head::before, .hitm.head::after { background: #ff4d4d; }
+  .scope { position: absolute; inset: 0; opacity: 0; background: radial-gradient(circle at 50% 50%, transparent 0 32%, rgba(0,0,0,.96) 32.3%); }
+  .scope::before, .scope::after { content: ""; position: absolute; background: rgba(0,0,0,.85); } .scope::before { left: 0; right: 0; top: 50%; height: 1px; } .scope::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+  .hurt { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(190,20,20,.55)); opacity: 0; }
+  .bar { position: absolute; bottom: 22px; right: 22px; width: min(260px, 40%); }
+  .bar .hp { height: 8px; border-radius: 6px; background: rgba(0,0,0,.45); overflow: hidden; } .bar .hp i { display: block; height: 100%; background: #e9eef3; border-radius: 6px; transition: width .15s; }
+  .bar .hp i.low { background: #ff5a4f; }
+  .bar .who { font-weight: 700; margin-bottom: 6px; letter-spacing: .04em; text-shadow: 0 1px 3px #000; }
+  .ammo { position: absolute; bottom: 20px; left: 22px; text-align: left; direction: ltr; text-shadow: 0 1px 3px #000; }
+  .ammo b { font: 700 34px/1 var(--font); font-variant-numeric: tabular-nums; } .ammo span { color: var(--muted); font-size: 16px; } .ammo div { color: var(--muted); font-size: 13px; margin-top: 4px; letter-spacing: .03em; }
+  .score { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); padding: 4px 14px; border-radius: 999px; background: rgba(10,12,16,.55); backdrop-filter: blur(6px); font-weight: 700; font-variant-numeric: tabular-nums; direction: ltr; }
+  .score .a { color: var(--p1); } .score .b { color: var(--p2); }
+  .feed { position: absolute; top: 14px; inset-inline-end: 16px; display: flex; flex-direction: column; gap: 4px; align-items: flex-end; direction: ltr; }
+  .feed div { background: rgba(10,12,16,.55); padding: 3px 10px; border-radius: 6px; font-size: 12.5px; }
+  .dead { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.35); font: 700 22px var(--font); opacity: 0; }
+  .center { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(4,6,10,.72); backdrop-filter: blur(8px); z-index: 5; }
+  .card { width: min(720px, 92vw); padding: 30px 34px; border-radius: 22px; background: rgba(22,24,30,.9); border: 1px solid rgba(255,255,255,.08); }
+  .card h1 { margin: 0 0 4px; font-size: 34px; letter-spacing: -.02em; direction: ltr; text-align: center; } .card p { color: var(--muted); text-align: center; margin: 0 0 20px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; } .col { padding: 14px 16px; border-radius: 14px; background: rgba(255,255,255,.04); font-size: 13px; line-height: 1.9; }
+  .col h3 { margin: 0 0 6px; font-size: 15px; } .col.p1 h3 { color: var(--p1); } .col.p2 h3 { color: var(--p2); }
+  kbd { font: 12px ui-monospace, Consolas, monospace; padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.12); }
+  .row { display: flex; gap: 10px; justify-content: center; margin-top: 20px; flex-wrap: wrap; }
+  button { font: 600 14px var(--font); color: #fff; background: #1f63d6; border: 0; border-radius: 12px; padding: 11px 22px; cursor: pointer; } button.ghost { background: rgba(255,255,255,.08); }
+  .center[hidden] { display: none; }
+  .pads { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 12px; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"></div>
+<div class="center" id="menu">
+  <div class="card">
+    <h1>SPLIT ARENA</h1>
+    <p>مواجهة محلية لاعبَين على شاشة مقسومة — أول من يصل إلى 10 إصابات قاتلة يفوز</p>
+    <div class="cols">
+      <div class="col p1"><h3>اللاعب 1 — كيبورد وماوس</h3><kbd>WASD</kbd> حركة · الماوس تصويب<br><kbd>زر أيسر</kbd> إطلاق · <kbd>زر أيمن</kbd> تقريب<br><kbd>R</kbd> تلقيم · <kbd>1-4</kbd> / <kbd>Q</kbd> سلاح<br><kbd>Space</kbd> قفز · <kbd>Shift</kbd> ركض</div>
+      <div class="col p2"><h3>اللاعب 2 — يد تحكم</h3>العصا اليسرى حركة · اليمنى تصويب<br><kbd>RT</kbd>/<kbd>R2</kbd> إطلاق · <kbd>LT</kbd>/<kbd>L2</kbd> تقريب<br><kbd>X</kbd>/<kbd>□</kbd> تلقيم · <kbd>Y</kbd>/<kbd>△</kbd> سلاح<br><kbd>A</kbd>/<kbd>✕</kbd> قفز · <kbd>L3</kbd> ركض<br><span style="color:var(--muted)">بدون يد: الأسهم حركة، IJKL تصويب، Enter إطلاق</span></div>
+    </div>
+    <div class="pads" id="pads">لا توجد يد تحكم — اضغط أي زر على اليد لتوصيلها</div>
+    <div class="row"><button id="start">ابدأ المواجهة</button><button class="ghost" id="splitBtn">تقسيم: جنباً إلى جنب</button></div>
+  </div>
+</div>
+<script src="input.js"></script>
+<script type="module">
+import { createGame, CONFIG } from "./game.js";
+
+/* input: P1 keyboard + mouse (+ pad 0 when two pads are connected), P2 the remaining pad (+ its own keys) */
+const common = { move: null, lookMouse: { axis: ["mouse"] }, fire: [], aim: [], reload: [], jump: [], sprint: [], next: [], prev: [], w1: ["Digit1"], w2: ["Digit2"], w3: ["Digit3"], w4: ["Digit4"], pause: ["Escape", "pad:start"] };
+const p1 = GameInput.create({ touch: false, mouseSensitivity: 1, storageKey: "arena.p1", padIndex: -1, actions: { ...common,
+  move: { axis: ["wasd", "lstick"] }, lookStick: { axis: ["rstick"] }, fire: ["mouse:0", "pad:rt"], aim: ["mouse:2", "pad:lt"], reload: ["KeyR", "pad:west"], jump: ["Space", "pad:south"], sprint: ["ShiftLeft", "pad:ls"], next: ["KeyQ", "wheel:down", "pad:north"], prev: ["wheel:up", "pad:left"] } });
+const p2 = GameInput.create({ touch: false, mouse: false, storageKey: "arena.p2", padIndex: 0, actions: { ...common, lookMouse: { axis: [] }, w1: [], w2: [], w3: [], w4: [], pause: ["pad:start"],
+  move: { axis: ["arrows", "lstick", "dpad"] }, lookStick: { axis: ["rstick", { up: "KeyI", down: "KeyK", left: "KeyJ", right: "KeyL" }] }, fire: ["Enter", "NumpadEnter", "pad:rt"], aim: ["ShiftRight", "pad:lt"], reload: ["Backslash", "pad:west"], jump: ["ControlRight", "pad:south"], sprint: ["pad:ls"], next: ["Slash", "pad:north", "pad:right"], prev: ["pad:left"] } });
+function assignPads() {
+  const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean);
+  if (pads.length >= 2) { p1.configure({ padIndex: pads[0].index }); p2.configure({ padIndex: pads[1].index }); }
+  else { p1.configure({ padIndex: -1 }); p2.configure({ padIndex: pads[0] ? pads[0].index : -1 }); }
+  document.getElementById("pads").textContent = pads.length ? pads.map((p, i) => `يد ${i + 1}: ${GameInput.familyOf(p.id)} ← اللاعب ${pads.length >= 2 ? i + 1 : 2}`).join(" · ") : "لا توجد يد تحكم — اضغط أي زر على اليد لتوصيلها";
+}
+addEventListener("gamepadconnected", assignPads); addEventListener("gamepaddisconnected", assignPads); setInterval(assignPads, 2000);
+
+/* HUD: one overlay per viewport, drawn from game state every frame */
+const hudEl = document.getElementById("hud");
+const halves = [0, 1].map((i) => { const d = document.createElement("div"); d.className = "half" + (i ? " split-line" : "");
+  d.innerHTML = `<div class="scope"></div><div class="hurt"></div><div class="cross"><i></i><i></i><i></i><i></i></div><div class="hitm"></div><div class="score"></div><div class="feed"></div><div class="bar"><div class="who"></div><div class="hp"><i></i></div></div><div class="ammo"><b></b> <span></span><div></div></div><div class="dead"></div>`;
+  hudEl.append(d); return d; });
+const q = (d, s) => d.querySelector(s);
+const hud = {
+  layout(split) { halves.forEach((d, i) => Object.assign(d.style, split === "horizontal" ? { left: 0, right: 0, top: i ? "50%" : 0, height: "50%", width: "100%" } : { top: 0, bottom: 0, left: i ? "50%" : 0, width: "50%", height: "100%" })); },
+  draw(players, state) {
+    players.forEach((p, i) => {
+      const d = halves[i], W = p.W, gap = 6 + (W.spread * (1 - p.aim) + p.recoil * 0.25) * 420, cr = q(d, ".cross").children;
+      cr[0].style.top = -gap - 9 + "px"; cr[1].style.top = gap + "px"; cr[2].style.left = -gap - 9 + "px"; cr[3].style.left = gap + "px";
+      q(d, ".cross").style.opacity = p.alive && !(W.scope && p.aim > 0.6) ? 1 - p.aim * 0.6 : 0;
+      q(d, ".scope").style.opacity = W.scope && p.aim > 0.85 && p.alive ? 1 : 0;
+      const hm = q(d, ".hitm"); hm.style.opacity = p.hitT > 0 ? 1 : 0; hm.classList.toggle("head", p.headT > 0);
+      q(d, ".hurt").style.opacity = Math.max(p.hurtT * 2, 1 - p.health / CONFIG.maxHealth) * 0.9;
+      const hp = q(d, ".hp i"); hp.style.width = Math.max(0, p.health) + "%"; hp.classList.toggle("low", p.health < 35);
+      q(d, ".who").textContent = `${p.team.name} · ${p.input.device}`; q(d, ".who").style.color = p.team.css;
+      q(d, ".ammo b").textContent = p.reloadT > 0 ? "··" : p.ammo[p.weapon]; q(d, ".ammo span").textContent = "/ " + W.mag; q(d, ".ammo div").textContent = p.reloadT > 0 ? "تلقيم…" : W.name;
+      q(d, ".score").innerHTML = `<span class="a">${players[0].kills}</span> — <span class="b">${players[1].kills}</span>`;
+      q(d, ".feed").innerHTML = state.feed.map((f) => `<div>${f.text}</div>`).join("");
+      const dead = q(d, ".dead"); dead.style.opacity = p.alive && !state.over && !state.paused ? 0 : 1;
+      dead.textContent = state.over ? (state.winner === p ? "فزت! 🏆 — اضغط إطلاق للعب مجدداً" : `فاز ${state.winner.team.name} — اضغط إطلاق للعب مجدداً`) : state.paused ? "متوقف مؤقتاً" : `أُصبت — تعود بعد ${Math.ceil(p.respawnT)}`;
+    });
+  },
+};
+
+const game = createGame({ canvas: document.getElementById("c"), hud, inputs: [p1, p2] });
+window.game = game;
+const menu = document.getElementById("menu");
+document.getElementById("start").onclick = () => { menu.hidden = true; document.getElementById("c").requestPointerLock?.(); };
+document.getElementById("splitBtn").onclick = (e) => { CONFIG.split = CONFIG.split === "vertical" ? "horizontal" : "vertical"; e.target.textContent = "تقسيم: " + (CONFIG.split === "vertical" ? "جنباً إلى جنب" : "أعلى وأسفل"); game.resize(); };
+document.getElementById("c").addEventListener("click", () => { if (!document.pointerLockElement && menu.hidden) document.getElementById("c").requestPointerLock?.(); });
+setInterval(() => { if (game.state.over && performance.now() - game.state.overAt > 1500 && (p1.down("fire") || p2.down("fire"))) game.restart(); }, 100);
+</script>
+</body>
+</html>
