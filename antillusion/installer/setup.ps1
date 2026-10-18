@@ -17,7 +17,7 @@ $cfg = @{
 
 function LoadWindow {
   if ("AntiSetupWindow" -as [type]) { return }
-  Add-Type -TypeDefinition (Get-Content (Join-Path $here "AntiSetup.cs") -Raw) -ReferencedAssemblies System.Windows.Forms, System.Drawing
+  Add-Type -TypeDefinition (Get-Content (Join-Path $here "AntiSetup.cs") -Raw -Encoding UTF8) -ReferencedAssemblies System.Windows.Forms, System.Drawing
 }
 
 # ---------- design preview (no installation) ----------

@@ -91,6 +91,7 @@ public class AntiSetupWindow : Form
         lock (sync)
         {
             clock += dt;
+            if (!(done && ok && clock > doneAt + 1.7)) Opacity = Math.Min(1.0, clock / 0.35);   // window fades in
             disp += (target - disp) * (1 - Math.Exp(-dt * 5));
             if (done && ok && clock > doneAt + 1.7)
             {
@@ -157,15 +158,15 @@ public class AntiSetupWindow : Form
             using (SolidBrush b = new SolidBrush(Color.FromArgb(235, Bar()))) { g.SetClip(new RectangleF(0, 0, W, 40)); g.FillPath(b, win); g.ResetClip(); }
             using (Pen p = new Pen(Edge)) g.DrawLine(p, 0, 40, W, 40);
             Dot(g, 22, Color.FromArgb(255, 95, 87)); Dot(g, 42, Color.FromArgb(254, 188, 46)); Dot(g, 62, Color.FromArgb(40, 200, 64));
-            using (SolidBrush b = new SolidBrush(Dim)) g.DrawString("antillusion — setup", monoSmall, b, new RectangleF(0, 12, W, 20), new StringFormat { Alignment = StringAlignment.Center });
+            using (SolidBrush b = new SolidBrush(Dim)) g.DrawString("antillusion \u2014 setup", monoSmall, b, new RectangleF(0, 12, W, 20), new StringFormat { Alignment = StringAlignment.Center });
 
             DrawChip(g, accent);
             DrawTitle(g, accent);
-            using (SolidBrush b = new SolidBrush(Dim)) g.DrawString("AI coding agent  ·  downloads everything it needs, installs for you only", monoSmall, b, 38, 198);
+            using (SolidBrush b = new SolidBrush(Dim)) g.DrawString("AI coding agent  \u00b7  downloads everything it needs, installs for you only", monoSmall, b, 38, 198);
             DrawLog(g, accent);
             DrawBar(g, accent);
             DrawStatus(g, accent);
-            using (SolidBrush b = new SolidBrush(Color.FromArgb(110, 110, 120))) g.DrawString("No administrator rights needed  ·  log: %TEMP%\\antillusion-setup.log", tiny, b, 38, 394);
+            using (SolidBrush b = new SolidBrush(Color.FromArgb(110, 110, 120))) g.DrawString("No administrator rights needed  \u00b7  log: %TEMP%\\antillusion-setup.log", tiny, b, 38, 394);
             using (Pen p = new Pen(Color.FromArgb(done ? 255 : 150, accent), 1.5f)) g.DrawPath(p, win);
         }
     }
@@ -198,7 +199,7 @@ public class AntiSetupWindow : Form
             using (Pen pen = new Pen(accent, 2.2f)) g.DrawEllipse(pen, cx - rad, cy - rad, rad * 2, rad * 2);
             using (SolidBrush b = new SolidBrush(accent)) g.FillPie(b, cx - rad, cy - rad, rad * 2, rad * 2, angle, 180);
         }
-        string label = done ? (ok ? "All set — launching Antillusion" : "Setup failed") : "Installing Antillusion";
+        string label = done ? (ok ? "All set \u2014 launching Antillusion" : "Setup failed") : "Installing Antillusion";
         using (SolidBrush b = new SolidBrush(Txt)) g.DrawString(label, uiBold, b, 88, 69);
     }
 
