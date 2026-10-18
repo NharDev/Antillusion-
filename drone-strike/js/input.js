@@ -19,6 +19,7 @@ const Input = (() => {
       if (e.code === 'ArrowRight' || e.code === 'KeyD') edges.add('right');
       if (e.code === 'BracketLeft') edges.add('camDown');
       if (e.code === 'BracketRight') edges.add('camUp');
+      if (e.code === 'KeyM') edges.add('mode');
     }
     keys.add(e.code);
     lastDevice = 'keyboard';
@@ -90,6 +91,7 @@ const Input = (() => {
       if (edge(15)) edges.add('right');
       if (edge(4)) edges.add('camDown');
       if (edge(5)) edges.add('camUp');
+      if (edge(3)) edges.add('mode');
       if (pressed.some((v, i) => v && !was(i))) lastDevice = 'pad';
       // stick flick left/right in menus
       const sx = ax[0] || 0;

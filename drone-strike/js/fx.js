@@ -84,8 +84,8 @@ const FX = (() => {
   function init(sc) {
     scene = sc;
     tex = sprite();
-    fire = new Particles(900, true, tex);
-    smoke = new Particles(500, false, tex);
+    fire = new Particles(1400, true, tex);
+    smoke = new Particles(1600, false, tex);
     sparks = new Particles(400, true, tex);
     scene.add(smoke.points, fire.points, sparks.points);
     flashLight = new T.PointLight(0xff9040, 0, 160, 1.5);
@@ -137,6 +137,17 @@ const FX = (() => {
     }
   }
 
+  // single particle for continuous emitters (burning wrecks, smoke columns)
+  function puff(x, y, z, kind, s) {
+    s = s || 1;
+    if (kind === 'fire') {
+      fire.emit(x + rnd(-0.6, 0.6) * s, y, z + rnd(-0.6, 0.6) * s, rnd(-0.5, 0.5), rnd(2, 4.5) * s, rnd(-0.5, 0.5), rnd(0.5, 1.0), rnd(1.2, 2.2) * s, 1.5 * s, 1, 0.6, 0.25, 0.75, 0.6, -1);
+      if (Math.random() < 0.35) smoke.emit(x, y + 1.5 * s, z, rnd(-0.4, 0.4), rnd(2, 3.5), rnd(-0.4, 0.4), rnd(2.5, 4), rnd(1.5, 2.5) * s, 2.2, 0.12, 0.11, 0.11, 0.55, 0.2, -0.4);
+    } else {
+      smoke.emit(x + rnd(-2, 2), y + 1, z + rnd(-2, 2), rnd(-0.6, 0.6) + 0.8, rnd(2.5, 4), rnd(-0.6, 0.6), rnd(6, 9), rnd(4, 6), 2.8, 0.3, 0.29, 0.28, 0.5, 0.05, -0.15);
+    }
+  }
+
   function update(dt) {
     fire.update(dt); smoke.update(dt); sparks.update(dt);
     flashLight.intensity = Math.max(0, flashLight.intensity - dt * 9);
@@ -157,5 +168,5 @@ const FX = (() => {
     flashLight.intensity = 0;
   }
 
-  return { init, setScale, explode, update, clear };
+  return { init, setScale, explode, puff, update, clear };
 })();

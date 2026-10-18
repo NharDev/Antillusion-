@@ -23,7 +23,7 @@ h3 { margin-bottom: 6px; font-size: 14px; letter-spacing: .1em; color: #8fd0ff; 
 #levelSel b { font-size: 40px; color: #ffd24a; }
 .arrowkey { cursor: pointer; padding: 4px 12px; border: 1px solid #5aa8e0; border-radius: 8px; font-size: 20px; }
 .arrowkey:hover { background: rgba(90,168,224,.25); }
-#levelInfo { min-height: 22px; font-size: 14px; letter-spacing: .08em; color: #ffb36b; max-width: 700px; }
+#levelInfo { min-height: 22px; font-size: 18px; line-height: 1.6; letter-spacing: .08em; color: #ffb36b; max-width: 700px; }
 .prompt { font-size: 22px; letter-spacing: .1em; padding: 10px 26px; border: 1px solid rgba(255,255,255,.35);
   border-radius: 40px; animation: pulse 1.3s infinite; cursor: pointer; background: rgba(0,0,0,.35); }
 @keyframes pulse { 50% { background: rgba(110,198,255,.25); } }
@@ -65,3 +65,16 @@ h3 { margin-bottom: 6px; font-size: 14px; letter-spacing: .1em; color: #8fd0ff; 
 #cam { position: absolute; left: 28px; bottom: 22px; font-size: 12px; opacity: .6; letter-spacing: .15em; }
 .warnflash { animation: wf .25s infinite; }
 @keyframes wf { 50% { opacity: .2; } }
+#hMode { position: absolute; right: 28px; bottom: 22px; font-size: 13px; letter-spacing: .18em; opacity: .85; }
+#hBiome { font-size: 13px; letter-spacing: .15em; opacity: .8; }
+#toast { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); padding: 10px 22px; border-radius: 30px;
+  background: rgba(0,0,0,.55); color: #fff; font-size: 20px; letter-spacing: .12em; pointer-events: none; opacity: 0; transition: opacity .2s; }
+#modeSel { font-size: 15px; letter-spacing: .1em; color: #cfe3f5; cursor: pointer; padding: 6px 14px; border: 1px dashed rgba(255,255,255,.3); border-radius: 20px; }
+#modeSel b { color: #ffd24a; }
+#levelInfo small { color: #ffcf9a; }
+@media (max-height: 780px) {
+  .controls { display: none; }
+  h1 { font-size: clamp(30px, 6vh, 56px); }
+  .panel { gap: 10px; }
+  .ar { font-size: 16px; }
+}

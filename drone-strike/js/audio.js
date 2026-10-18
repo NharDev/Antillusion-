@@ -55,15 +55,16 @@ const Sfx = (() => {
     o.start(t); o.stop(t + dur + 0.02);
   }
 
-  function explosion(big) {
+  function explosion(big, vol) {
     if (!ctx) return;
     const t = ctx.currentTime;
+    const v = vol == null ? 1 : vol;
     const src = ctx.createBufferSource(); src.buffer = noiseBuf;
     const f = ctx.createBiquadFilter(); f.type = 'lowpass';
     f.frequency.setValueAtTime(4500, t);
     f.frequency.exponentialRampToValueAtTime(70, t + 1.7);
     const g = ctx.createGain();
-    g.gain.setValueAtTime(big ? 1.1 : 0.9, t);
+    g.gain.setValueAtTime((big ? 1.1 : 0.9) * v, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 1.9);
     src.connect(f); f.connect(g); g.connect(master);
     src.start(t); src.stop(t + 2);
@@ -71,10 +72,32 @@ const Sfx = (() => {
     o.type = 'sine';
     o.frequency.setValueAtTime(110, t);
     o.frequency.exponentialRampToValueAtTime(28, t + 0.7);
-    og.gain.setValueAtTime(1, t);
+    og.gain.setValueAtTime(v, t);
     og.gain.exponentialRampToValueAtTime(0.001, t + 0.9);
     o.connect(og); og.connect(master);
     o.start(t); o.stop(t + 1);
+  }
+
+  let lastGun = 0;
+  function gun(vol) {
+    if (!ctx || ctx.currentTime - lastGun < 0.06) return;
+    lastGun = ctx.currentTime;
+    const t = ctx.currentTime;
+    const src = ctx.createBufferSource(); src.buffer = noiseBuf;
+    const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    src.connect(f); f.connect(g); g.connect(master);
+    src.start(t, Math.random()); src.stop(t + 0.14);
+  }
+  function whistle() {
+    if (!ctx) return;
+    const t = ctx.currentTime;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(1500, t); o.frequency.exponentialRampToValueAtTime(380, t + 1.5);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + 0.3); g.gain.exponentialRampToValueAtTime(0.001, t + 1.55);
+    o.connect(g); g.connect(master); o.start(t); o.stop(t + 1.6);
   }
 
   function jingle() {
@@ -84,5 +107,5 @@ const Sfx = (() => {
   function warn() { beep(900, 0.08, 0.1, 'square'); }
   function ui() { beep(520, 0.07, 0.08, 'triangle'); }
 
-  return { init, engine, explosion, jingle, tick, warn, ui, beep };
+  return { init, engine, explosion, jingle, tick, warn, ui, beep, gun, whistle };
 })();
