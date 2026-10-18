@@ -18,6 +18,10 @@ jobs:
       run:
         working-directory: antillusion
     steps:
+      - name: Keep LF line endings (delta updates compare packaged files with the repository)
+        working-directory: .
+        shell: bash
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
@@ -25,9 +29,11 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run test:unit
       - run: node build/build.js
-      - name: Update manifest (latest.json)
+      - name: Update manifests (files.json for delta updates, latest.json)
         shell: bash
-        run: node -e "const fs=require('fs');const bi=JSON.parse(fs.readFileSync('build-info.json','utf8'));const size=fs.statSync('../antillusion-setup/Antillusion-Setup.exe').size;fs.writeFileSync('../antillusion-setup/latest.json',JSON.stringify({version:bi.version,commit:bi.commit,channel:bi.channel,builtAt:bi.builtAt,setup:'Antillusion-Setup.exe',size}));console.log(fs.readFileSync('../antillusion-setup/latest.json','utf8'))"
+        run: |
+          node build/manifest.js ../antillusion-build/Antillusion-win32-x64/resources/app . ../antillusion-setup/files.json
+          node -e "const fs=require('fs');const bi=JSON.parse(fs.readFileSync('build-info.json','utf8'));const fm=JSON.parse(fs.readFileSync('../antillusion-setup/files.json','utf8'));const size=fs.statSync('../antillusion-setup/Antillusion-Setup.exe').size;fs.writeFileSync('../antillusion-setup/latest.json',JSON.stringify({version:bi.version,commit:bi.commit,channel:bi.channel,builtAt:bi.builtAt,setup:'Antillusion-Setup.exe',size,files:'files.json',electron:fm.electron}));console.log(fs.readFileSync('../antillusion-setup/latest.json','utf8'))"
       - name: Installer sizes
         shell: pwsh
         run: Get-ChildItem ../antillusion-setup -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,2)}}
@@ -72,7 +78,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete dev-build --cleanup-tag --yes || true
-          gh release create dev-build ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip ../antillusion-setup/latest.json "$RUNNER_TEMP"/preview/*.png \
+          gh release create dev-build ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip ../antillusion-setup/latest.json ../antillusion-setup/files.json "$RUNNER_TEMP"/preview/*.png \
             --prerelease --target "${{ github.sha }}" --title "Antillusion dev build" \
             --notes "Latest build of branch ${{ github.ref_name }}. Download Antillusion-Setup.exe (tiny; it downloads the rest).
 
@@ -80,9 +86,12 @@ jobs:
       - name: Live updater check against the published dev-build
         if: startsWith(github.ref, 'refs/heads/')
         run: node test/updater.live.js
+      - name: Live delta update against the published files.json
+        if: startsWith(github.ref, 'refs/heads/')
+        run: node test/delta.live.js ../antillusion-build/Antillusion-win32-x64/resources/app
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip ../antillusion-setup/latest.json --title "Antillusion ${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip ../antillusion-setup/latest.json ../antillusion-setup/files.json --title "Antillusion ${{ github.ref_name }}" --generate-notes

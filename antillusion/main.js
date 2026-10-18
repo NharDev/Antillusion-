@@ -398,7 +398,18 @@ async function checkUpdate({ auto } = {}) {
 async function installUpdate() {
   if (updateState.phase === "installing") return updateState;
   setUpdate({ phase: "installing", error: null });
-  if (updateState.mode === "release") {   // installed copy: fetch the new (tiny) Setup.exe now, run it when the app restarts or quits
+  if (updateState.mode === "release") {   // installed copy: changed files only (delta); the full installer only when Electron itself changed
+    if (updateState.filesUrl) {
+      try {
+        setUpdate({ phase: "installing", note: "يقارن ملفات التطبيق…" });
+        const r = await updater.applyDelta({ manifestUrl: updateState.filesUrl, electron: process.versions.electron, onProgress: (i, n) => setUpdate({ note: `ينزّل الملفات المعدّلة فقط: ${i} من ${n}` }) });
+        if (!r.needFull) {
+          const kb = r.bytes < 1048576 ? Math.max(1, Math.round(r.bytes / 1024)) + " KB" : (r.bytes / 1048576).toFixed(1) + " MB";
+          return setUpdate({ phase: "ready", delta: true, installerFile: null, applied: updateState.commits || [], error: null, note: r.changed || r.removed ? `حُدِّث ${r.changed} ملف${r.removed ? ` وحُذف ${r.removed}` : ""} — نُزِّل ${kb} فقط. أعد التشغيل لتطبيقه.` : "الملفات مطابقة — أعد التشغيل." });
+        }
+        setUpdate({ note: "تغيّرت نواة Electron — يلزم المثبّت الكامل هذه المرة" });
+      } catch (e) { setUpdate({ note: "تعذّر التحديث التفاضلي (" + e.message + ") — سيُستخدم المثبّت" }); }
+    }
     try {
       if (!updateState.url) throw new Error("لا يوجد ملف مثبّت في آخر إصدار");
       const r = await updater.downloadInstaller(updateState.url, path.join(app.getPath("temp"), "Antillusion-Setup-update.exe"), updateState.size);

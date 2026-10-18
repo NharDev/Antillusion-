@@ -6,6 +6,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const os = require("os");
+const crypto = require("crypto");
 
 const REPO = "NharDev/Antillusion-";
 const semver = (v) => String(v || "").replace(/^v/i, "").split(/[.-]/).slice(0, 3).map((x) => parseInt(x, 10) || 0);
@@ -48,7 +50,7 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
           const m = await r.json(), sha = String(m.commit || "").toLowerCase(), mine = String(info.commit || "").toLowerCase();
           const available = dev ? !!(sha && mine && sha !== mine) : newer(m.version, base.version);
           return { ...base, checkedAt, channel: dev ? "dev" : "stable", head: mine.slice(0, 7), latest: m.version ? "v" + m.version : sha.slice(0, 7), latestVersion: m.version || "", available,
-            url: `${base2}/${m.setup || "Antillusion-Setup.exe"}`, size: m.size || 0, page: `https://github.com/${repo}/releases/${dev ? "tag/dev-build" : "latest"}`, notes: String(m.notes || "").slice(0, 1500) };
+            url: `${base2}/${m.setup || "Antillusion-Setup.exe"}`, size: m.size || 0, filesUrl: m.files ? `${base2}/${m.files}` : "", electron: m.electron || "", page: `https://github.com/${repo}/releases/${dev ? "tag/dev-build" : "latest"}`, notes: String(m.notes || "").slice(0, 1500) };
         }
       } catch (e) { if (e && e.name === "AbortError") throw e; }
       // 2) fallback: the GitHub API (older releases have no latest.json)
@@ -125,7 +127,46 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
     return { file: dest, size: buf.length };
   }
 
-  return { info, check, apply, rollback, downloadInstaller };
+  /** Delta update of an installed copy: compare SHA-256 of every app file with files.json, download only what changed
+      (raw files from GitHub at the release commit, generated ones are inline), verify each, then replace and delete stale files.
+      Returns { needFull: true } when the Electron runtime itself changed — then the full installer is needed. */
+  async function applyDelta({ manifestUrl, electron, onProgress } = {}) {
+    const res = await fetchImpl(manifestUrl, { headers: { "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(30000) });
+    if (!res.ok) throw new Error("files.json: HTTP " + res.status);
+    const m = await res.json();
+    if (!m || !m.files || !m.commit) throw new Error("files.json غير صالح");
+    if (m.electron && electron && m.electron !== electron) return { needFull: true, reason: "electron " + electron + " → " + m.electron };
+    const hash = (buf) => crypto.createHash("sha256").update(buf).digest("hex"), safe = (rel) => !rel.split("/").some((p) => p === ".." || p === "") && !path.isAbsolute(rel);
+    const local = new Map();
+    (function walk(dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const abs = path.join(dir, e.name); if (e.isDirectory()) walk(abs); else local.set(path.relative(appDir, abs).replace(/\\/g, "/"), abs); } })(appDir);
+    const changed = Object.entries(m.files).filter(([rel, f]) => safe(rel) && (!local.has(rel) || hash(fs.readFileSync(local.get(rel))) !== f.sha));
+    const removed = [...local.keys()].filter((rel) => !m.files[rel]);
+    if (!changed.length && !removed.length) return { changed: 0, removed: 0, bytes: 0, version: m.version, commit: m.commit };
+    const stage = fs.mkdtempSync(path.join(os.tmpdir(), "antillusion-delta-")); let done = 0, bytes = 0;
+    const enc = (rel) => rel.split("/").map(encodeURIComponent).join("/");
+    const fetchFile = async (rel) => {
+      for (const u of [`https://raw.githubusercontent.com/${repo}/${m.commit}/${m.root || "antillusion"}/${enc(rel)}`, `https://cdn.jsdelivr.net/gh/${repo}@${m.commit}/${m.root || "antillusion"}/${enc(rel)}`]) {
+        try { const r = await fetchImpl(u, { headers: { "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(60000) }); if (r.ok) return Buffer.from(await r.arrayBuffer()); } catch (e) { if (e && e.name === "AbortError") throw e; }
+      }
+      throw new Error("تعذّر تنزيل " + rel);
+    };
+    try {
+      const queue = changed.slice();
+      const worker = async () => { for (let it = queue.shift(); it; it = queue.shift()) {
+        const [rel, f] = it, buf = f.data != null ? Buffer.from(f.data, "base64") : await fetchFile(rel);
+        if (hash(buf) !== f.sha) throw new Error("بصمة غير مطابقة: " + rel);
+        const to = path.join(stage, rel); fs.mkdirSync(path.dirname(to), { recursive: true }); fs.writeFileSync(to, buf);
+        bytes += f.data != null ? 0 : buf.length; done++; if (onProgress) onProgress(done, changed.length);
+      } };
+      await Promise.all(Array.from({ length: Math.min(6, changed.length) }, worker));   // everything is downloaded and verified before anything is touched
+      for (const [rel] of changed) { const to = path.join(appDir, rel); fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(path.join(stage, rel), to); }
+      for (const rel of removed) { try { fs.rmSync(local.get(rel), { force: true }); } catch {} }
+      (function prune(dir) { for (const e of fs.readdirSync(dir, { withFileTypes: true })) if (e.isDirectory()) { const d = path.join(dir, e.name); prune(d); try { if (!fs.readdirSync(d).length) fs.rmdirSync(d); } catch {} } })(appDir);
+    } finally { fs.rmSync(stage, { recursive: true, force: true }); }
+    return { changed: changed.length, removed: removed.length, bytes, version: m.version, commit: m.commit };
+  }
+
+  return { info, check, apply, rollback, downloadInstaller, applyDelta };
 }
 
 module.exports = { createUpdater, newer, REPO };
