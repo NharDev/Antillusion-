@@ -23,6 +23,6 @@ let inline = 0, total = 0;
   }
 })(appDir);
 const bi = (() => { try { return JSON.parse(fs.readFileSync(path.join(appDir, "build-info.json"), "utf8")); } catch { return {}; } })();
-const electron = (() => { try { return require(path.join(repoDir, "node_modules", "electron", "package.json")).version; } catch { return ""; } })();
+const electron = (() => { try { return JSON.parse(fs.readFileSync(path.resolve(repoDir, "node_modules", "electron", "package.json"), "utf8")).version; } catch { return ""; } })();
 fs.writeFileSync(out, JSON.stringify({ version: bi.version || "", commit: bi.commit || "", electron, root: "antillusion", files }));
 console.log(`files.json: ${Object.keys(files).length} files, ${(total / 1048576).toFixed(1)} MB, ${inline} inline, electron ${electron}`);

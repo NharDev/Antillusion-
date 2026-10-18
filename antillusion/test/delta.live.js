@@ -8,7 +8,7 @@ const src = process.argv[2], url = "https://github.com/NharDev/Antillusion-/rele
 (async () => {
   let m = null;
   for (let i = 0; i < 12; i++) { try { const r = await fetch(url); if (r.ok) { m = await r.json(); if (!process.env.GITHUB_SHA || m.commit === process.env.GITHUB_SHA) break; } } catch {} await new Promise((r) => setTimeout(r, 5000)); }
-  assert.ok(m && m.files, "files.json is published"); if (process.env.GITHUB_SHA) assert.strictEqual(m.commit, process.env.GITHUB_SHA, "files.json is from this build");
+  assert.ok(m && m.files, "files.json is published"); assert.match(m.electron || "", /^\d+\.\d+\.\d+/, "files.json records the Electron version (decides delta vs full installer)"); if (process.env.GITHUB_SHA) assert.strictEqual(m.commit, process.env.GITHUB_SHA, "files.json is from this build");
   const app = fs.mkdtempSync(path.join(os.tmpdir(), "delta-live-")); fs.cpSync(src, app, { recursive: true });
   fs.appendFileSync(path.join(app, "main.js"), "\n// local damage\n"); fs.rmSync(path.join(app, "ui", "app.css")); fs.writeFileSync(path.join(app, "junk.txt"), "x");
   const u = createUpdater({ appDir: app, git: async () => ({ ok: false, out: "" }), npm: async () => ({ ok: true }) });
