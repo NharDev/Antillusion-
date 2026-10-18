@@ -134,3 +134,8 @@ input[type="checkbox"]:not(.sw2 input):hover { border-color: var(--accent); } in
 input[type="checkbox"]:not(.sw2 input):checked { background: var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230c1124' stroke-width='3.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / 13px no-repeat; border-color: var(--accent); }
 input[type="checkbox"]:not(.sw2 input):focus-visible { box-shadow: var(--ring); outline: 0; }
 input[type="range"] { accent-color: var(--accent); }
+
+/* rich notices (provider failures etc.) */
+.notice.rich { display: flex; flex-direction: column; gap: 8px; text-align: start; max-width: 760px; }
+.notice .n-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.notice .n-detail summary { cursor: pointer; font-size: 12px; opacity: .8; } .notice .n-detail pre { margin: 6px 0 0; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word; font: 11.5px/1.55 var(--mono); background: rgba(0, 0, 0, .22); border-radius: 10px; padding: 8px 10px; text-align: left; }

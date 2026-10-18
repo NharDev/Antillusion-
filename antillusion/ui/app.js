@@ -315,7 +315,11 @@ function itemEl(v, it) {
       h("div", { class: "md", dir: textDir(it.text), html: MD.render(it.text) }));
   }
   if (it.kind === "tool") return toolEl(v, it);
-  return h("div", { class: "notice " + (it.level || "info"), data: { id: it.id }, dir: "auto" }, it.text);
+  const acts = (it.actions || []).map((a) => a === "router" ? h("button", { class: "btn small", onclick: () => call("open:external", String(S.settings.baseUrl || "http://localhost:20128/v1").replace(/\/v1\/?$/, "") + "/dashboard") }, icoEl("ext", 12), " لوحة OmniRoute")
+    : a === "model" ? h("button", { class: "btn small primary", onclick: (e) => modelPicker(e.currentTarget) }, icoEl("brain", 12), " اختر نموذجاً آخر") : null).filter(Boolean);
+  return h("div", { class: "notice " + (it.level || "info") + (it.detail || acts.length ? " rich" : ""), data: { id: it.id }, dir: "auto" }, h("div", { class: "n-text" }, it.text),
+    acts.length ? h("div", { class: "n-acts" }, acts) : null,
+    it.detail ? h("details", { class: "n-detail" }, h("summary", null, "التفاصيل التقنية"), h("pre", { dir: "ltr" }, String(it.detail).replace(/;\s+/g, ";\n"))) : null);
 }
 
 const act = { el: null, t0: 0, timer: 0, sid: null, text: "" };

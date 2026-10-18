@@ -93,6 +93,19 @@ function apiError(status, body) {
   return Object.assign(new Error(`${hints[status] || "خطأ من مزوّد النموذج."} (HTTP ${status}: ${msg}${meta})`), { status });
 }
 
+/** Routers such as OmniRoute return one long error listing every provider they tried ("x: model — [402]: …; y: auth — [401]: …").
+    Turn it into a short Arabic summary + the raw text for a collapsible "details" block. */
+function summarizeProviderError(msg) {
+  const raw = String(msg || ""), codes = [...raw.matchAll(/\[(\d{3})\]/g)].map((m) => +m[1]);
+  if (codes.length < 2 && !/bad_gateway|Stream ended|SSE event/i.test(raw)) return null;
+  const cat = (c) => (c === 402 ? "رصيد غير كافٍ" : c === 401 || c === 403 ? "مفتاح أو صلاحية مفقودة" : c === 429 ? "حدّ طلبات أو حساب معلّق" : c === 400 || c === 404 ? "نموذج غير معروف" : "عطل عند المزوّد");
+  const counts = new Map(); for (const c of codes) counts.set(cat(c), (counts.get(cat(c)) || 0) + 1);
+  if (!codes.length) counts.set("انقطع البث من المزوّد", 1);
+  const more = +((raw.match(/\(\+(\d+) more\)/) || [])[1] || 0);
+  const list = [...counts].map(([k, n]) => `${k}${n > 1 ? " ×" + n : ""}`).join("، ");
+  return { text: `فشل كل المزوّدين المتاحين لهذا النموذج (${list}${more ? `، و${more} غيرها` : ""}). فعّل مزوّداً أو اشحن رصيده من لوحة OmniRoute، أو اختر نموذجاً آخر.`, detail: raw };
+}
+
 function mergeReasoning(list, parts) {
   for (const p of parts) {
     const cur = list.find((x) => (p.index !== undefined ? x.index === p.index : x === list[list.length - 1]) && x.type === p.type);
@@ -113,7 +126,7 @@ function createAgent({ store, emit, getKey, ui }) {
   const waiting = new Map();   // reqId -> { sid, resolve }
 
   const upsert = (s, item) => { const i = s.log.findIndex((x) => x.id === item.id); if (i < 0) s.log.push(item); else s.log[i] = item; emit({ t: "item", sid: s.id, item }); return item; };
-  const notice = (s, text, level = "info") => upsert(s, { id: uid(), kind: "notice", text, level, at: Date.now() });
+  const notice = (s, text, level = "info", extra) => upsert(s, { id: uid(), kind: "notice", text, level, at: Date.now(), ...(extra || {}) });
   const pushUsage = (s) => emit({ t: "usage", sid: s.id, usage: s.usage, ctx: s.ctx });
   const libDirs = (s) => [store.userLibraryDir && store.userLibraryDir(), path.join(s.cwd, ".antillusion", "library")];
 
@@ -134,7 +147,9 @@ function createAgent({ store, emit, getKey, ui }) {
       } catch (e) { if (e.name === "AbortError") throw e; if (attempt >= (isOR ? 3 : 1)) throw isOR ? e : new Error(`تعذّر الاتصال بالسيرفر ${base} — تأكد أنه يعمل وأن العنوان صحيح.`); await sleep(1200 * 2 ** attempt, signal); continue; }
       if (r.ok) return r;
       const text = await r.text();
-      if ([408, 429, 500, 502, 503, 504, 529].includes(r.status) && attempt < 3) { await sleep(900 * 2 ** attempt, signal); continue; }
+      // a router (OmniRoute) that already tried every provider says so with per-provider codes: retrying the same model only wastes seconds
+      const exhausted = !isOR && (/\[\d{3}\]/.test(text) || /bad_gateway/i.test(text));
+      if (!exhausted && [408, 429, 500, 502, 503, 504, 529].includes(r.status) && attempt < (isOR ? 3 : 1)) { await sleep(900 * 2 ** attempt, signal); continue; }
       throw apiError(r.status, text);
     }
   }
@@ -150,6 +165,14 @@ function createAgent({ store, emit, getKey, ui }) {
   }
 
   /** One streamed model call. Returns { message, toolCalls, finish }. */
+  // own servers: the session model first, then favourites, then the router's general-purpose combos, then anything listed
+  const PREFERRED = ["auto/best-coding", "auto/best-coding-fast", "auto/best-fast", "auto/pro-coding", "auto/best-reasoning", "auto/best-chat", "openrouter/auto"];
+  function fallbackOrder(s) {
+    const st = store.settings(), have = new Set(((store.models && store.models().list) || []).map((m) => m.id)), out = [];
+    for (const id of [s.model, ...(st.favorites || []), ...PREFERRED, ...have]) if (id && (id === s.model || have.has(id)) && !out.includes(id)) out.push(id);
+    return out.slice(0, 6);
+  }
+
   async function complete(s, signal) {
     const st = store.settings(), info = store.modelInfo(s.model) || {};
     const readOnly = s.mode !== "agent";
@@ -174,6 +197,9 @@ function createAgent({ store, emit, getKey, ui }) {
         const alts = (st.favorites || []).filter((id) => id !== s.model && isFree(store.modelInfo(id)) && (!msgs.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "image_url")) || (store.modelInfo(id).architecture.input_modalities || []).includes("image")));
         if (alts.length) { const order = [s.model, ...alts.slice(0, 2)]; for (let i = 0; i < (s._alt || 0) % order.length; i++) order.push(order.shift()); body.models = order; body.model = order[0]; }
       }
+    }
+    else if (s._alt) {   // own server (OmniRoute…): a model whose providers all failed → try the next available one
+      const order = fallbackOrder(s); if (order.length > 1) body.model = order[s._alt % order.length];
     }
     if (info.local) body.max_tokens = Math.min(body.max_tokens, Math.max(1024, Math.floor((info.context_length || 32768) / 4)));   // leave the prompt room inside a small context window
     emit({ t: "activity", sid: s.id, text: "ينتظر النموذج…" });
@@ -250,7 +276,12 @@ function createAgent({ store, emit, getKey, ui }) {
   }).join(NLCH + NLCH);
 
   async function askExpert(s, question, signal, kind = "advice") {
-    const st = store.settings(), model = st.expertModel || "anthropic/claude-opus-5.5";
+    const st = store.settings(); let model = st.expertModel || "anthropic/claude-opus-5.5";
+    if (!/openrouter\.ai/.test(st.baseUrl || "openrouter.ai")) {   // own server: the configured expert may not exist there (e.g. no Anthropic credentials in OmniRoute)
+      const have = new Set(((store.models && store.models().list) || []).map((m) => m.id));
+      if (!have.has(model)) { model = ["auto/best-reasoning", "auto/pro-reasoning", "auto/pro-coding", "auto/best-coding"].find((id) => have.has(id) && id !== s.model) || ""; }
+      if (!model) { s._noExpert = true; throw new Error("لا يوجد نموذج خبير متاح على هذا السيرفر — اختر واحداً من الإعدادات ← النماذج والخبير"); }
+    }
     emit({ t: "activity", sid: s.id, text: kind === "blueprint" ? "الخبير يضع الخطة…" : "استشارة الخبير…" });
     let listing = ""; try { listing = fs.readdirSync(s.cwd).filter((n) => !/^(node_modules|\.git)$/.test(n)).slice(0, 60).join(", "); } catch {}
     const sys = kind === "blueprint"
@@ -417,6 +448,7 @@ function createAgent({ store, emit, getKey, ui }) {
     running.set(s.id, { ac });
     emit({ t: "status", sid: s.id, running: true });
     const st = store.settings();
+    s._alt = 0;
     try {
       for (let step = 0; step < (st.maxSteps || 80); step++) {
         await maybeCompact(s, ac.signal);
@@ -429,13 +461,19 @@ function createAgent({ store, emit, getKey, ui }) {
           } catch (e) { if (ac.signal.aborted) throw e; s._noExpert = true; notice(s, "تعذّرت استشارة الخبير: " + e.message + " — أكمل بالنموذج المتاح.", "warn"); }
         }
         let res;
+        const own = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
         for (let attempt = 0; ; attempt++) {
-          try { res = await complete(s, ac.signal); s._alt = 0; break; }
-          catch (e) {   // upstream cut the stream (504, idle timeout, reset): try again on the next model, in smaller pieces
-            const transient = !ac.signal.aborted && e.name !== "AbortError" && (!e.status || e.status >= 500 || e.status === 408 || e.status === 429);
-            if (!transient || attempt >= 2) throw e;
-            s._alt = (s._alt || 0) + 1; s._chunkHint = true;
-            notice(s, "انقطع ردّ المزوّد — إعادة المحاولة بنموذج بديل وعلى دفعات أصغر…", "warn");
+          try { res = await complete(s, ac.signal); if (!own) s._alt = 0; break; }
+          catch (e) {   // upstream failed: try again on the next model (OpenRouter free models, or the next model the own server offers)
+            if (ac.signal.aborted || e.name === "AbortError") throw e;
+            const st2 = e.status, order = own ? fallbackOrder(s) : [];
+            const switchable = own ? (!st2 || st2 >= 500 || [401, 402, 403, 404, 408, 429].includes(st2) || /\[\d{3}\]/.test(e.message)) : (!st2 || st2 >= 500 || st2 === 408 || st2 === 429);
+            const limit = own ? Math.min(3, Math.max(0, order.length - 1)) : 2;
+            if (!switchable || attempt >= limit) { const sum = summarizeProviderError(e.message); if (sum) throw Object.assign(new Error(sum.text), { detail: sum.detail, providerError: true }); throw e; }
+            const from = own ? order[(s._alt || 0) % order.length] : s.model;
+            s._alt = (s._alt || 0) + 1; if (!own) s._chunkHint = true;
+            const sum = summarizeProviderError(e.message);
+            notice(s, own ? `تعذّر ${from}${sum ? "" : ` (${String(e.message).slice(0, 120)})`} — أكمل بـ ${order[s._alt % order.length]}…` : "انقطع ردّ المزوّد — إعادة المحاولة بنموذج بديل وعلى دفعات أصغر…", "warn", sum ? { detail: sum.detail } : undefined);
           }
         }
         s.messages.push(res.message);
@@ -462,7 +500,7 @@ function createAgent({ store, emit, getKey, ui }) {
       }
     } catch (e) {
       if (e.name === "AbortError" || ac.signal.aborted) notice(s, "تم الإيقاف.");
-      else notice(s, e.message || String(e), "error");
+      else notice(s, e.message || String(e), "error", e.providerError ? { detail: e.detail, actions: ["router", "model"] } : undefined);
     } finally {
       emit({ t: "activity", sid: s.id, text: "" });
       for (const [id, w] of waiting) if (w.sid === s.id) { waiting.delete(id); w.resolve({ decision: "deny" }); }
@@ -513,7 +551,7 @@ function createAgent({ store, emit, getKey, ui }) {
     s._blueprint = text && String(text).length > 8 && !/<starter_template/.test(body) && /(اعمل|ابن|انشئ|أنشئ|صمم|بدي|اريد|أريد|طور|برمج|سوي|build|create|make|implement|develop|write|add|design)/i.test(text) ? String(text) : null;
     s.messages.push({ role: "user", content: parts.length ? [{ type: "text", text: body || "(see attached)" }, ...parts] : body });
     upsert(s, { id: uid(), kind: "user", text: String(rawText || ""), attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, thumb: a.kind === "image" ? a.dataUrl : undefined })), at: Date.now() });
-    if (!s.titled && text) { s.title = String(text).replace(/\s+/g, " ").trim().slice(0, 48); s.titled = true; emit({ t: "session", sid, meta: store.meta(s) }); }
+    if (!s.titled && text) { s.title = String(text).replace(/[*_#>`|]+/g, "").replace(/^\s*[-•]?\s*(الهدف|Goal)\s*[:：/]?\s*/i, "").replace(/\s+/g, " ").trim().slice(0, 48) || "محادثة جديدة"; s.titled = true; emit({ t: "session", sid, meta: store.meta(s) }); }
     store.saveSession(s);
     run(s);   // deliberately not awaited: progress flows through emit()
     return true;
@@ -525,7 +563,7 @@ function createAgent({ store, emit, getKey, ui }) {
     const raw = String(text || "").trim(); if (!raw) throw new Error("اكتب فكرتك أولاً");
     const dirs = [store.dir && path.join(store.dir, "skills"), s && path.join(s.cwd, ".antillusion", "skills")];
     const sl = skills.parseSlash(raw, dirs), skill = sl ? sl.skill : skills.match(raw, dirs, 6), idea = sl ? sl.rest || raw : raw;
-    const sys = `You turn a rough idea into a precise, buildable brief for an AI coding agent. Reply in the SAME language as the idea (Arabic → Arabic). Output ONLY the brief, no preamble, at most ~230 words, as a short list with these bold labels: الهدف/Goal · المستخدمون/Users · الميزات الأساسية (3–7, must-have first) · التصميم والأسلوب · التقنية المقترحة (with a reason) · حالات خاصة وأخطاء متوقعة · معايير القبول (checkable) · خارج النطاق. Keep every constraint the user stated, make sensible defaults for the rest and mark them "(افتراضي)". Never invent brand names or facts. No code.${skill && skill.brief ? ` This request fits the "${skill.title}" skill — also cover: ${skill.brief}.` : ""}`;
+    const sys = `You turn a rough idea into a precise, buildable brief for an AI coding agent. Reply in the SAME language as the idea (Arabic → Arabic). Output ONLY the brief, no preamble, at most ~230 words, as a short list with bold labels written ONLY in the idea's language — Arabic: الهدف · المستخدمون · الميزات الأساسية (3–7, must-have first) · التصميم والأسلوب · التقنية المقترحة (with a reason) · حالات خاصة · معايير القبول (checkable) · خارج النطاق; English: Goal · Users · Core features · Design & style · Suggested tech · Edge cases · Acceptance criteria · Out of scope. Keep every number, duration, name and constraint from the idea EXACTLY as written (never change 15 seconds into 5). Keep every constraint the user stated, make sensible defaults for the rest and mark them "(افتراضي)". Never invent brand names or facts. No code.${skill && skill.brief ? ` This request fits the "${skill.title}" skill — also cover: ${skill.brief}.` : ""}`;
     const r = await request({ model, max_tokens: 1200, usage: { include: true }, messages: [{ role: "system", content: sys }, { role: "user", content: idea }] });
     const j = await r.json(), out = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     if (s) { account(s, j.usage, model); pushUsage(s); }
