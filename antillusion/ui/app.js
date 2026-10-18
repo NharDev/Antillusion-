@@ -621,12 +621,30 @@ async function usageModal() {
   const max = Math.max(...u.days.map((d) => d.cost), 1e-9), k = u.key || {};
   const table = (rows, first) => h("table", { class: "utable" }, h("thead", null, h("tr", null, [first, "التكلفة", "إدخال", "مخزّن", "إخراج", "طلبات"].map((x) => h("th", null, x)))),
     h("tbody", null, rows.length ? rows.map((r) => h("tr", null, h("td", { dir: "auto" }, r.label), ...[fmtCost(r.cost), fmtTok(r.prompt), fmtTok(r.cached), fmtTok(r.completion), r.requests].map((x) => h("td", { dir: "ltr" }, x)))) : h("tr", null, h("td", { colSpan: 6, class: "muted" }, "لا بيانات بعد"))));
-  const v = cur();
+  const v = cur(), quotaBox = h("div", { class: "uquota" }, h("small", { class: "muted" }, "جارٍ فحص حصص OmniRoute…")); drawQuota(quotaBox);
   body.replaceChildren(
     h("div", { class: "ucards" }, v ? card("هذه الجلسة", v.meta.usage) : null, card("اليوم", u.today), card("آخر 7 أيام", u.week), card("آخر 30 يوماً", u.month), card("الإجمالي", u.all)),
     h("div", { class: "ukey" }, icoEl("shield", 15), k.error ? "تعذّر فحص المفتاح: " + k.error : h("span", null, "المفتاح ", h("code", { dir: "ltr" }, k.label || ""), ` — المستهلَك على OpenRouter: ${fmtCost(k.usage || 0)}`, k.limit != null ? ` من ${fmtCost(k.limit)} (المتبقي ${fmtCost(k.limit_remaining || 0)})` : " · بلا حدّ إنفاق", k.free_model_daily_requests ? ` · طلبات اليوم: ${k.free_model_daily_requests.used}/${k.free_model_daily_requests.limit}` : "")),
+    quotaBox,
     h("h4", null, "آخر 14 يوماً"), h("div", { class: "ubars" }, u.days.map((d) => h("div", { class: "ubar", title: `${d.day}: ${fmtCost(d.cost)} · ${d.requests} طلب` }, h("i", { style: `height:${Math.max(d.cost ? 4 : 0, (d.cost / max) * 100)}%` }), h("small", { dir: "ltr" }, d.day.slice(3))))),
     h("h4", null, "حسب النموذج"), table(u.byModel, "النموذج"), h("h4", null, "حسب الجلسة"), table(u.bySession, "الجلسة"));
+}
+
+const pctColor = (p) => (p == null ? "var(--muted)" : p < 15 ? "var(--danger, #e5484d)" : p < 40 ? "#f5a524" : "var(--accent)");
+const fmtPct = (p) => (p == null ? "—" : p.toFixed(p < 10 ? 1 : 0) + "%");
+async function drawQuota(box) {
+  const q = await call("omni:quota"); if (!q) return;
+  if (q.error) return box.replaceChildren(h("small", { class: "muted" }, "حصص OmniRoute: " + q.error));
+  const bar = (p) => h("div", { class: "qbar" }, h("i", { style: `width:${p == null ? 0 : p}%;background:${pctColor(p)}` }));
+  const cur = q.current;
+  box.replaceChildren(
+    h("h4", null, "المتبقي من الحصص (OmniRoute)"),
+    h("div", { class: "qhead" },
+      h("div", { class: "ucard" }, h("small", null, "المجموع المتبقي (متوسط كل المزودين)"), h("b", { dir: "ltr" }, fmtPct(q.overallPct)), bar(q.overallPct)),
+      h("div", { class: "ucard" }, h("small", null, "المزوّد الحالي"), h("b", { dir: "ltr" }, cur ? cur.provider : "—"), h("span", { dir: "ltr" }, cur ? `${cur.plan || ""} ${cur.remainingPct != null ? "· متبقٍ " + fmtPct(cur.remainingPct) : ""}` : "لم يُستخدم بعد"))),
+    ...(q.providers.length ? q.providers.map((p) => h("div", { class: "qprov" },
+      h("div", { class: "qrow" }, h("b", { dir: "ltr" }, p.provider + (cur && p.id && p.id === cur.id ? " ●" : "")), h("span", { dir: "ltr" }, (p.plan ? p.plan + " · " : "") + fmtPct(p.remainingPct))), bar(p.remainingPct),
+      ...p.quotas.map((x) => h("div", { class: "qrow sub", dir: "ltr" }, h("span", null, x.name), h("span", null, x.total != null && x.remaining != null ? `${Math.round(x.remaining).toLocaleString()} / ${Math.round(x.total).toLocaleString()}` : fmtPct(x.remainingPct), x.resetAt ? " · reset " + new Date(x.resetAt).toLocaleString() : ""))))) : [h("small", { class: "muted" }, "لا توجد بيانات حصص مخزّنة بعد — أرسل رسالة عبر OmniRoute ثم أعد المحاولة.")]));
 }
 
 async function libraryModal() {

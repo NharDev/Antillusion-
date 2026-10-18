@@ -263,3 +263,7 @@ body, #titlebar, #sidebar, #composer, .tool, .modal, .pop { transition: backgrou
 .s-nav { display: flex; gap: 8px; margin-top: 30px; } .s-nav .btn { height: 40px; padding: 0 22px; font-size: 14.5px; border-radius: 11px; }
 .activity { display: flex; align-items: center; gap: 9px; color: var(--muted); font-size: 12.8px; padding: 2px 4px; } .activity .a-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 70%; } .activity .a-time { font: 11.5px var(--mono); }
 .mmeta .free { color: var(--ok); font-family: var(--ui); }
+.uquota { margin-top: 10px; } .qhead { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.qprov { background: var(--raised); border: 1px solid var(--border-soft); border-radius: 10px; padding: 8px 12px; margin-top: 6px; }
+.qrow { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; } .qrow.sub { font: 11px var(--mono); color: var(--text-2); margin-top: 3px; }
+.qbar { height: 6px; border-radius: 3px; background: var(--border-soft); overflow: hidden; margin: 4px 0; } .qbar i { display: block; height: 100%; border-radius: 3px; }

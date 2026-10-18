@@ -65,7 +65,7 @@ async function ensureLocalRouter() {
     if (!fs.existsSync(cli)) return false;
     const env = { ...process.env, OMNIROUTE_SERVER_HOST: "127.0.0.1" };
     delete env.ELECTRON_RUN_AS_NODE;
-    try { const p = spawn("node", [cli, "serve", "--port", "20128", "--no-open", "--no-tray"], { detached: true, stdio: "ignore", windowsHide: true, env }); p.on("error", () => {}); p.unref(); } catch { return false; }
+    try { const p = spawn(process.env.ANTILLUSION_NODE || "node", [cli, "serve", "--port", "20128", "--no-open", "--no-tray"], { detached: true, stdio: "ignore", windowsHide: true, env }); p.on("error", () => {}); p.unref(); } catch { return false; }
     for (let i = 0; i < 45; i++) { await new Promise((r) => setTimeout(r, 2000)); if (await up()) return true; }
     return false;
   })().finally(() => { routerStarting = null; });
@@ -315,6 +315,7 @@ const H = {
   "worktree:create": worktreeCreate, "worktree:status": worktreeStatus, "worktree:merge": worktreeMerge, "worktree:remove": worktreeRemove,
   "servers:list": () => tools.serverList(), "servers:stop": (id) => tools.stopServer(id), "servers:logs": (id) => tools.serverLogs(id, 400),
   "usage:get": usageReport,
+  "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; await ensureLocalRouter(); try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
   "library:read": (cardId, id) => { const s = id && store.getSession(id); return library.read(cardId, [store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
   "library:import": async () => {

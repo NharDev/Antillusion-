@@ -10,7 +10,8 @@ const { createStore } = require("../core/store");
 const { createAgent } = require("../core/agent");
 const tools = require("../core/tools");
 
-const key = ((fs.readFileSync(path.join(__dirname, "..", ".env"), "utf8").match(/^OPENROUTER_API_KEY=(\S+)/m) || [])[1]) || process.env.OPENROUTER_API_KEY;
+let envTxt = ""; try { envTxt = fs.readFileSync(path.join(__dirname, "..", ".env"), "utf8"); } catch {}
+const key = ((envTxt.match(/^OPENROUTER_API_KEY=(\S+)/m) || [])[1]) || process.env.OPENROUTER_API_KEY;
 const work = fs.mkdtempSync(path.join(os.tmpdir(), "antillusion-work-"));
 const store = createStore(fs.mkdtempSync(path.join(os.tmpdir(), "antillusion-data-")));
 const prompt = process.argv[2] || "Create index.html with a small counter app (a button that increments a number, styled nicely), serve it, and verify it in the preview. Then tell me in one line what you did.";
