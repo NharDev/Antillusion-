@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>DRONE STRIKE</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="static"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
+
+<!-- FPV on-screen display -->
+<div id="hud" class="hidden">
+  <div id="horizon"><div id="horizonLine"></div></div>
+  <div id="crosshair"></div>
+  <div id="tl">
+    <div class="lbl">LEVEL</div><div id="hLevel" class="big">1</div>
+    <div class="lbl">BATTERY / TIME</div>
+    <div id="hTime" class="big">00.0</div>
+    <div id="batt"><div id="battFill"></div></div>
+  </div>
+  <div id="tr">
+    <div class="lbl">SPEED</div><div id="hSpeed" class="big">0 <small>km/h</small></div>
+    <div class="lbl">ALT</div><div id="hAlt" class="big">0 <small>m</small></div>
+    <div id="hWind" class="lbl"></div>
+  </div>
+  <div id="bc">
+    <div id="compass"><div id="compassArrow">▲</div></div>
+    <div id="hDist">DIST 0 m</div>
+    <div id="hWarn"></div>
+  </div>
+  <div id="marker"><div id="markerBox"></div><div id="markerDist"></div></div>
+  <div id="edgeArrow">➤</div>
+  <div id="cam">CAM 25°</div>
+</div>
+
+<div id="count" class="hidden"></div>
+
+<!-- Title -->
+<div id="title" class="panel">
+  <h1>DRONE STRIKE</h1>
+  <p class="ar" dir="rtl">ضربة الدرون — حلّق بمنظور الشخص الأول، أصِب الهدف بين المباني، ولا تلمس أي شيء!</p>
+  <div id="levelSel">
+    <span class="arrowkey" id="lvlL">◀</span>
+    <span>LEVEL <b id="selLevel">1</b></span>
+    <span class="arrowkey" id="lvlR">▶</span>
+  </div>
+  <div id="levelInfo"></div>
+  <div class="prompt" id="startPrompt"></div>
+  <div id="padStatus"></div>
+  <div class="controls">
+    <div>
+      <h3>🎮 PlayStation</h3>
+      <table>
+        <tr><td>Left stick ↕</td><td>Altitude ⬆⬇ / ارتفاع</td></tr>
+        <tr><td>Left stick ↔</td><td>Yaw (turn) / دوران</td></tr>
+        <tr><td>Right stick</td><td>Forward · Back · Strafe / تحريك</td></tr>
+        <tr><td>R2 / L2</td><td>Boost / Brake — تسريع / فرامل</td></tr>
+        <tr><td>L1 / R1</td><td>Camera tilt / زاوية الكاميرا</td></tr>
+        <tr><td>✕ / ○ / □</td><td>OK · Back · Restart</td></tr>
+        <tr><td>OPTIONS</td><td>Pause / إيقاف مؤقت</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3>⌨ Keyboard</h3>
+      <table>
+        <tr><td>Space / Shift</td><td>Up / Down</td></tr>
+        <tr><td>Q / E</td><td>Yaw left / right</td></tr>
+        <tr><td>W / S</td><td>Forward / Back</td></tr>
+        <tr><td>A / D</td><td>Strafe left / right</td></tr>
+        <tr><td>F / V</td><td>Boost / Brake</td></tr>
+        <tr><td>[ / ]</td><td>Camera tilt</td></tr>
+        <tr><td>Enter · R · Esc</td><td>OK · Restart · Pause</td></tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div id="pause" class="panel hidden">
+  <h2>PAUSED</h2>
+  <p class="ar" dir="rtl">إيقاف مؤقت</p>
+  <div class="prompt" id="pausePrompt"></div>
+</div>
+
+<div id="crash" class="panel hidden">
+  <h2 class="red">SIGNAL LOST</h2>
+  <p class="ar red" dir="rtl">💥 تحطمت الدرون!</p>
+  <div id="crashReason"></div>
+  <div class="prompt" id="crashPrompt"></div>
+</div>
+
+<div id="win" class="panel hidden">
+  <h2 class="green">TARGET DESTROYED</h2>
+  <p class="ar green" dir="rtl">🎯 أصبتَ الهدف!</p>
+  <div id="winStats"></div>
+  <div id="stars"></div>
+  <div class="prompt" id="winPrompt"></div>
+</div>
+
+<script src="lib/three.min.js"></script>
+<script src="js/input.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/world.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>

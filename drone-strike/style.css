@@ -1,0 +1,67 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: #e8f4ff;
+  font-family: "Segoe UI", system-ui, -apple-system, "Noto Sans Arabic", Tahoma, sans-serif; user-select: none; }
+canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+canvas#static { position: fixed; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; image-rendering: pixelated; mix-blend-mode: normal; }
+#vignette { position: fixed; inset: 0; pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.55) 100%); }
+#flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+.hidden { display: none !important; }
+.red { color: #ff5a4a; } .green { color: #55ffa0; }
+
+/* panels */
+.panel { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; text-align: center; padding: 20px; background: rgba(2, 8, 18, 0.55); backdrop-filter: blur(3px); }
+#title { background: linear-gradient(rgba(2,8,18,.35), rgba(2,8,18,.7)); }
+h1 { font-size: clamp(36px, 7vw, 84px); letter-spacing: 0.18em; font-weight: 800;
+  background: linear-gradient(#fff, #6ec6ff); -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: 0 0 30px rgba(80,170,255,.35); }
+h2 { font-size: clamp(30px, 5vw, 60px); letter-spacing: 0.14em; }
+h3 { margin-bottom: 6px; font-size: 14px; letter-spacing: .1em; color: #8fd0ff; }
+.ar { font-size: clamp(16px, 2.2vw, 24px); max-width: 760px; line-height: 1.7; }
+#levelSel { display: flex; gap: 24px; align-items: center; font-size: 28px; letter-spacing: .12em; }
+#levelSel b { font-size: 40px; color: #ffd24a; }
+.arrowkey { cursor: pointer; padding: 4px 12px; border: 1px solid #5aa8e0; border-radius: 8px; font-size: 20px; }
+.arrowkey:hover { background: rgba(90,168,224,.25); }
+#levelInfo { min-height: 22px; font-size: 14px; letter-spacing: .08em; color: #ffb36b; max-width: 700px; }
+.prompt { font-size: 22px; letter-spacing: .1em; padding: 10px 26px; border: 1px solid rgba(255,255,255,.35);
+  border-radius: 40px; animation: pulse 1.3s infinite; cursor: pointer; background: rgba(0,0,0,.35); }
+@keyframes pulse { 50% { background: rgba(110,198,255,.25); } }
+#padStatus { font-size: 14px; color: #9ac; min-height: 20px; }
+.controls { display: flex; gap: 40px; flex-wrap: wrap; justify-content: center; margin-top: 4px; font-size: 13px; }
+.controls table { border-collapse: collapse; text-align: left; }
+.controls td { padding: 3px 12px 3px 0; color: #cfe3f5; }
+.controls td:first-child { color: #ffd24a; white-space: nowrap; font-weight: 600; }
+#crashReason, #winStats { font-size: 22px; line-height: 1.7; }
+#stars { font-size: 46px; color: #ffd24a; letter-spacing: 8px; }
+#count { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: clamp(60px, 14vw, 180px);
+  font-weight: 800; text-shadow: 0 0 30px rgba(0,0,0,.6); pointer-events: none; text-align: center; }
+#count small { display: block; font-size: clamp(14px, 2vw, 22px); letter-spacing: .12em; color: #ffb36b; font-weight: 500; max-width: 80vw; }
+
+/* HUD */
+#hud { position: fixed; inset: 0; pointer-events: none; font-family: "Consolas", "SF Mono", monospace; color: #7dff9a;
+  text-shadow: 0 0 6px rgba(0,0,0,.9), 0 0 2px rgba(0,0,0,.9); }
+#hud .lbl { font-size: 11px; letter-spacing: .2em; opacity: .75; margin-top: 6px; }
+#hud .big { font-size: 30px; font-weight: 700; }
+#hud small { font-size: 13px; opacity: .8; }
+#tl { position: absolute; left: 28px; top: 22px; }
+#tr { position: absolute; right: 28px; top: 22px; text-align: right; }
+#batt { width: 150px; height: 8px; border: 1px solid currentColor; margin-top: 6px; }
+#battFill { height: 100%; background: currentColor; width: 100%; }
+#bc { position: absolute; left: 0; right: 0; bottom: 26px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+#compass { width: 54px; height: 54px; border: 1px solid currentColor; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.25); }
+#compassArrow { font-size: 26px; transition: transform .05s linear; color: #ff6a4a; }
+#hDist { font-size: 22px; font-weight: 700; }
+#hWarn { font-size: 18px; color: #ff5a4a; min-height: 24px; letter-spacing: .15em; font-weight: 700; }
+#crosshair { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 1px solid rgba(125,255,154,.8); border-radius: 50%; }
+#crosshair::after { content: ""; position: absolute; left: 50%; top: 50%; width: 3px; height: 3px; margin: -1.5px; background: #7dff9a; border-radius: 50%; }
+#horizon { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+#horizonLine { position: absolute; left: -130px; top: 0; width: 260px; height: 2px; background: linear-gradient(90deg, transparent, rgba(125,255,154,.55) 20%, transparent 45%, transparent 55%, rgba(125,255,154,.55) 80%, transparent); }
+#marker { position: absolute; left: 0; top: 0; transform: translate(-50%, -50%); text-align: center; }
+#markerBox { width: 44px; height: 44px; border: 2px solid #ff4a3a; transform: rotate(45deg); margin: 0 auto; box-shadow: 0 0 12px #ff4a3a inset, 0 0 12px #ff4a3a; animation: mk 1s infinite; }
+@keyframes mk { 50% { transform: rotate(45deg) scale(1.2); } }
+#markerDist { margin-top: 22px; color: #ff8a7a; font-size: 14px; font-weight: 700; }
+#edgeArrow { position: absolute; left: 0; top: 0; font-size: 30px; color: #ff6a4a; transform-origin: center; }
+#cam { position: absolute; left: 28px; bottom: 22px; font-size: 12px; opacity: .6; letter-spacing: .15em; }
+.warnflash { animation: wf .25s infinite; }
+@keyframes wf { 50% { opacity: .2; } }
