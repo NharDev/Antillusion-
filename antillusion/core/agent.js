@@ -248,8 +248,15 @@ function createAgent({ store, emit, getKey, ui }) {
       }
     }
     else if (s._cur) body.model = s._cur;   // own server (OmniRoute…): the model the run fell back to
+    // reply budget: a moderate start (free tiers count it against their limits), grown automatically when a reply is cut at
+    // the limit (thinking models can spend thousands of tokens before the first word); never above the user's setting
+    const userMax = st.maxTokens || 32000;
+    if (info.local) body.max_tokens = Math.min(body.max_tokens, st.localMaxTokens || 8192, Math.max(1024, Math.floor((info.context_length || 32768) / 4)));
     if (lite) body.max_tokens = Math.min(body.max_tokens, 2048);
-    if (info.local) body.max_tokens = Math.min(body.max_tokens, st.localMaxTokens || 4096, Math.max(1024, Math.floor((info.context_length || 32768) / 4)));   // leave the prompt room inside a small context window
+    if (s._boost) body.max_tokens = Math.min(Math.max(body.max_tokens, s._boost), userMax, (info.top_provider && info.top_provider.max_completion_tokens) || 1e9);
+    // "no thinking" for OpenAI-compatible servers too (OmniRoute forwards it; a provider that rejects it gets it removed below)
+    if (!/openrouter\.ai/.test(st.baseUrl || "openrouter.ai") && (!s.effort || s.effort === "off")) body.reasoning_effort = "low";
+    else if (!/openrouter\.ai/.test(st.baseUrl || "openrouter.ai") && s.effort) body.reasoning_effort = s.effort === "max" ? "high" : s.effort;
     emit({ t: "activity", sid: s.id, text: `ينتظر ${body.model}…` });
     // watchdog: a provider that never answers, or stalls mid-stream, is cut off so the run can move to another model.
     // The per-attempt controller also lets the user switch models mid-request (switchModel → "switch").
@@ -272,7 +279,7 @@ function createAgent({ store, emit, getKey, ui }) {
       try { r = await request(body, att.signal); }
       catch (e) {   // a model that rejects one of the optional knobs still gets its turn
         if (![400, 404, 422].includes(e.status) || att.signal.aborted) throw e;
-        delete body.reasoning; delete body.provider; delete body.models;
+        delete body.reasoning; delete body.provider; delete body.models; delete body.reasoning_effort;
         r = await request(body, att.signal);
       }
     } catch (e) { clearTimeout(dog); signal.removeEventListener("abort", onOuter); if (slot) slot.cut = null; throw fail(e); }
@@ -521,7 +528,7 @@ function createAgent({ store, emit, getKey, ui }) {
     running.set(s.id, { ac, cut: null });
     emit({ t: "status", sid: s.id, running: true });
     const st = store.settings();
-    s._alt = 0; s._cur = null; let scouted = false;
+    s._alt = 0; s._cur = null; let scouted = false; s._lengthRetries = 0; s._contRetries = 0;
     const ownSrv = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
     if (ownSrv && isBad(s.model)) {   // it failed a moment ago: start on a working one instead of waiting for it to fail again
       const next = fallbackOrder(s)[0];
@@ -620,8 +627,28 @@ function createAgent({ store, emit, getKey, ui }) {
             else notice(s, "انقطع ردّ المزوّد — إعادة المحاولة بنموذج بديل وعلى دفعات أصغر…", "warn");
           }
         }
+        // cut at the length limit: never stop there. Nothing usable (all thinking) or a half-written tool call → redo the step
+        // with a bigger budget (and smaller writes); partial text → ask the model to continue where it stopped.
+        if (res.finish === "length") {
+          const txt = String(res.message.content || "").trim();
+          const broken = res.toolCalls.filter((tc) => { try { JSON.parse(tc.args || "{}"); return false; } catch { return true; } });
+          const cap = st.maxTokens || 32000, cur = s._boost || 8192;
+          if ((!txt && !res.toolCalls.length) || broken.length) {
+            if ((s._lengthRetries = (s._lengthRetries || 0) + 1) <= 3) {
+              s._boost = Math.min(cap, Math.max(cur * 2, 16000));
+              if (broken.length) s._chunkHint = true;
+              notice(s, broken.length ? `انقطع ملف أثناء كتابته — أعيد هذه الخطوة على دفعات أصغر وبمساحة ${Math.round(s._boost / 1000)}k رمز…` : `استهلك النموذج مساحة الرد في التفكير قبل أن يجيب — أعيد المحاولة بمساحة ${Math.round(s._boost / 1000)}k رمز…`, "info");
+              step--; continue;
+            }
+          } else if (!res.toolCalls.length && (s._contRetries = (s._contRetries || 0) + 1) <= 4) {
+            s.messages.push(res.message, { role: "user", content: "[Your reply was cut off by the length limit. Continue exactly where you stopped — do not repeat anything already written.]" });
+            step--; continue;
+          }
+          if (s._lengthRetries > 3 || s._contRetries > 4) notice(s, "انقطع ردّ النموذج عند حدّ الطول عدة مرات — ارفع «أقصى طول للرد» من الإعدادات أو اختر نموذجاً أقوى.", "warn");
+          if (!txt && !res.toolCalls.length) break;
+        }
+        s._lengthRetries = 0; s._contRetries = 0;
         s.messages.push(res.message);
-        if (res.finish === "length") notice(s, "انقطع ردّ النموذج عند حدّ الطول — يمكنك رفع «أقصى طول للرد» من الإعدادات.", "warn");
         if (!res.toolCalls.length) break;
         emit({ t: "activity", sid: s.id, text: "ينفّذ الأدوات…" });
         const one = async (tc) => { if (ac.signal.aborted) return "Interrupted by the user before this tool ran."; try { return await execTool(s, tc, ac.signal); } catch (e) { return `Tool error: ${e.message}`; } };

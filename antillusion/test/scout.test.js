@@ -52,7 +52,7 @@ function run(port, working) {
   assert.ok(r.notices.some((n) => /وجدت 1 نموذجاً يعمل/.test(n.text)), "says what it found");
   assert.ok(!r.notices.some((n) => n.level === "error"), "no error");
   assert.deepStrictEqual(r.store.settings().scout.ok.map((x) => x.id), ["agnes/claude-sonnet-4"], "remembered for next time");
-  assert.ok(r.asked.filter((a) => a[1] === "stream").every((a) => a[2] <= 4096), "reply reservation fits free tiers");
+  assert.ok(r.asked.filter((a) => a[1] === "stream").every((a) => a[2] <= 8192), "reply reservation stays moderate");
 
   // 2) nothing works → one error with a per-provider diagnosis
   r = await run(5212, []);
