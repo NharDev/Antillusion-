@@ -10,7 +10,9 @@
   "scripts": {
     "start": "electron .",
     "test:core": "node test/core.test.js",
-    "build": "node build/build.js"
+    "build": "node build/build.js",
+    "test:unit": "node test/tools.test.js && node test/omniquota.test.js && node test/updater.test.js && node test/own-server.test.js",
+    "test": "npm run test:unit"
   },
   "devDependencies": {
     "electron": "^44.5.1"

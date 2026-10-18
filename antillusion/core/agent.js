@@ -527,7 +527,7 @@ function createAgent({ store, emit, getKey, ui }) {
     return true;
   }
 
-  return { send, stop, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), systemPrompt };
+  return { send, stop, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
 }
 
 module.exports = { createAgent, uid };

@@ -25,7 +25,7 @@ function h(tag, props, ...kids) {
 const ICONS = {
   plus: "M12 5v14M5 12h14", x: "M6 6l12 12M18 6L6 18", up: "M12 19V5M5 12l7-7 7 7", folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z",
   clip: "M21 12.5l-8.5 8.5a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3", sliders: "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4",
-  chart: "M4 20V10M10 20V4M16 20v-7M2 20h20", book: "M5 4h13a1 1 0 011 1v15H6.5A1.5 1.5 0 015 18.5zM5 18.5A1.5 1.5 0 016.5 17H19", branch: "M6 4v10M6 14a3 3 0 100 6 3 3 0 000-6zM18 4a3 3 0 100 6 3 3 0 000-6zM18 10c0 5-6 3-9 6",
+  download: "M12 3v12M7 11l5 5 5-5M4 20h16", refresh: "M20 11a8 8 0 00-14.9-3M4 4v4h4M4 13a8 8 0 0014.9 3M20 20v-4h-4", chart: "M4 20V10M10 20V4M16 20v-7M2 20h20", book: "M5 4h13a1 1 0 011 1v15H6.5A1.5 1.5 0 015 18.5zM5 18.5A1.5 1.5 0 016.5 17H19", branch: "M6 4v10M6 14a3 3 0 100 6 3 3 0 000-6zM18 4a3 3 0 100 6 3 3 0 000-6zM18 10c0 5-6 3-9 6",
   globe: "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18", reload: "M20 11a8 8 0 10-2.3 5.7M20 4v7h-7", back: "M15 6l-6 6 6 6", fwd: "M9 6l6 6-6 6",
   ext: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5", chev: "M6 9l6 6 6-6", check: "M5 12l5 5 9-10", term: "M4 6l6 6-6 6M12 18h8", file: "M6 3h8l4 4v14H6zM14 3v4h4",
   search: "M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-4.5-4.5", star: "M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9 6.6 19.8l1.1-6.1L3.2 9.4l6.1-.8z", trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13", undo: "M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3",
@@ -184,6 +184,7 @@ function renderHead() {
     h("button", { class: "crumb", title: m.cwd, onclick: (e) => folderMenu(e.currentTarget) }, h("span", { dir: "auto" }, baseName(m.baseCwd) || m.cwd)), h("span", { class: "crumb-sep" }, "/"),
     h("span", { class: "crumb cur", dir: "auto", title: "انقر مرتين لإعادة التسمية", ondblclick: renameSession }, m.title),
     h("span", { class: "grow" }),
+    quotaChip(),
     h("button", { class: "hchip quiet", title: "استخدام هذه الجلسة — اضغط للتفاصيل", onclick: usageModal }, h("span", { dir: "ltr" }, `${fmtCost(m.usage.cost)} · ${fmtTok(m.usage.prompt + m.usage.completion)}`)),
     h("button", { class: "mini", title: "خيارات المحادثة", onclick: (e) => menu(e.currentTarget, [
       { label: "إعادة تسمية", icon: "edit", onClick: renameSession },
@@ -583,12 +584,13 @@ async function settingsModal() {
   const urlInp = h("input", { class: "field", dir: "ltr", value: s.baseUrl, placeholder: "http://IP:8000/v1", onchange: (e) => setUrl(e.target.value.trim()) });
   const preset = Object.keys(PRESETS).find((k) => PRESETS[k] === s.baseUrl) || "custom";
   const keyInfo = h("small", { class: "muted" }, s.hasKey ? "جارٍ فحص المفتاح…" : "لا يوجد مفتاح بعد.");
+  const keyWarn = s.keyUnencrypted ? h("small", { class: "upd-note bad" }, "⚠ تشفير نظام التشغيل غير متاح على هذا الجهاز، فالمفتاح محفوظ كنص عادي في ملف الإعدادات. لا تشارك مجلد بيانات التطبيق.") : null;
   const check = async () => { const u = await call("usage:get"); if (!u) return; const k = u.key || {}; keyInfo.textContent = k.error ? "⚠ " + k.error : `المفتاح يعمل · ${k.label || "المزوّد"}${k.usage ? ` · استُخدم ${fmtCost(k.usage)}` : ""}${k.limit != null ? ` من حدّ ${fmtCost(k.limit)}` : ""}${k.free_model_daily_requests ? ` · طلبات اليوم ${k.free_model_daily_requests.used}/${k.free_model_daily_requests.limit}` : ""}`; };
   if (s.hasKey) check();
   modal("الإعدادات", h("div", { class: "settings" },
     h("h4", null, "الاتصال"),
     row("مفتاح API", "مفتاح OmniRoute أو OpenRouter — يُحفظ مشفّراً على جهازك", h("div", { class: "keybox" }, keyInp, h("button", { class: "btn primary", onclick: async () => { if (!keyInp.value.trim()) return; const r = await call("key:set", keyInp.value); if (r) { S.settings = r; keyInp.value = ""; keyInp.placeholder = "•••••••• (محفوظ)"; toast("تم حفظ المفتاح"); check(); } } }, "حفظ"))),
-    h("div", { class: "srow" }, h("span"), keyInfo),
+    h("div", { class: "srow" }, h("span"), keyInfo), keyWarn,
     row("مصدر النماذج", "سيرفرك أو جهازك: بلا مفتاح، بلا اشتراك، بلا حدّ طلبات", h("select", { class: "field", onchange: (e) => { const u = PRESETS[e.target.value]; if (u) { urlInp.value = u; setUrl(u); } else { urlInp.focus(); urlInp.select(); } } },
       [["omniroute", "OmniRoute (المحلي :20128)"], ["openrouter", "OpenRouter"], ["ollama", "Ollama على هذا الجهاز"], ["vllm", "vLLM على هذا الجهاز"], ["custom", "سيرفري السحابي (اكتب العنوان)"]].map(([k, l]) => h("option", { value: k, selected: k === preset }, l)))),
     row("عنوان الـAPI", "أي سيرفر متوافق مع OpenAI: OmniRoute، vLLM، Ollama", urlInp),
@@ -641,10 +643,88 @@ async function drawQuota(box) {
     h("h4", null, "المتبقي من الحصص (OmniRoute)"),
     h("div", { class: "qhead" },
       h("div", { class: "ucard" }, h("small", null, "المجموع المتبقي (متوسط كل المزودين)"), h("b", { dir: "ltr" }, fmtPct(q.overallPct)), bar(q.overallPct)),
-      h("div", { class: "ucard" }, h("small", null, "المزوّد الحالي"), h("b", { dir: "ltr" }, cur ? cur.provider : "—"), h("span", { dir: "ltr" }, cur ? `${cur.plan || ""} ${cur.remainingPct != null ? "· متبقٍ " + fmtPct(cur.remainingPct) : ""}` : "لم يُستخدم بعد"))),
+      h("div", { class: "ucard" }, h("small", null, "المزوّد الحالي"), h("b", { dir: "ltr" }, cur ? cur.provider : "—"), h("span", { dir: "auto" }, cur ? `${cur.plan ? cur.plan + " · " : ""}${fmtPct(cur.remainingPct)} متبقٍ` : "لم يُستخدم بعد"))),
     ...(q.providers.length ? q.providers.map((p) => h("div", { class: "qprov" },
       h("div", { class: "qrow" }, h("b", { dir: "ltr" }, p.provider + (cur && p.id && p.id === cur.id ? " ●" : "")), h("span", { dir: "ltr" }, (p.plan ? p.plan + " · " : "") + fmtPct(p.remainingPct))), bar(p.remainingPct),
       ...p.quotas.map((x) => h("div", { class: "qrow sub", dir: "ltr" }, h("span", null, x.name), h("span", null, x.total != null && x.remaining != null ? `${Math.round(x.remaining).toLocaleString()} / ${Math.round(x.total).toLocaleString()}` : fmtPct(x.remainingPct), x.resetAt ? " · reset " + new Date(x.resetAt).toLocaleString() : ""))))) : [h("small", { class: "muted" }, "لا توجد بيانات حصص مخزّنة بعد — أرسل رسالة عبر OmniRoute ثم أعد المحاولة.")]));
+}
+
+/* ---------- OmniRoute quota chip + low-quota alert ---------- */
+
+const Q = { data: null, warned: new Set() };
+function quotaChip() {
+  const d = Q.data; if (!d || d.error || !d.providers || !d.providers.length) return null;
+  const cur = d.current, pct = cur && cur.remainingPct != null ? cur.remainingPct : d.overallPct;
+  return h("button", { class: "hchip quiet qchip", title: "المتبقي من حصص OmniRoute — اضغط للتفاصيل", onclick: usageModal },
+    h("i", { class: "qdot", style: `background:${pctColor(pct)}` }), h("span", { dir: "ltr" }, `${cur ? cur.provider : "OmniRoute"} · ${fmtPct(pct)}`));
+}
+async function pollQuota() {
+  if (!/20128/.test((S.settings && S.settings.baseUrl) || "")) { Q.data = null; return; }
+  let q; try { q = await api.invoke("omni:quota"); } catch { return; }
+  Q.data = q; if (cur()) renderHead();
+  if (!q || q.error) return;
+  for (const p of q.providers) {
+    const low = p.remainingPct != null && p.remainingPct < 15, k = p.id || p.provider;
+    if (low && !Q.warned.has(k)) { Q.warned.add(k); const alt = q.providers.filter((x) => x !== p && (x.remainingPct == null || x.remainingPct >= 15))[0]; toast(`⚠ حصة ${p.provider} على وشك النفاد (${fmtPct(p.remainingPct)})` + (alt ? ` — جرّب التحويل إلى ${alt.provider}` : ""), "err"); }
+    if (!low) Q.warned.delete(k);
+  }
+}
+
+/* ---------- updates (GitHub) ---------- */
+
+const U = { st: { phase: "idle" }, listeners: new Set() };
+function onUpdateState(st) {
+  const prev = U.st.phase; U.st = st;
+  const b = $("#btnUpdate"); if (b) { b.classList.toggle("has-update", st.phase === "available" || st.phase === "ready"); b.title = st.phase === "ready" ? "تم التحديث — أعد التشغيل" : st.phase === "available" ? "يتوفر تحديث جديد" : "التحديثات"; }
+  U.listeners.forEach((fn) => fn(st));
+  if (st.phase === "ready" && prev !== "ready") showUpdateBanner(st);
+  else if (st.phase === "available" && prev !== "available" && !(S.settings && S.settings.autoUpdate !== false && st.mode === "git")) toast(`يتوفر تحديث جديد لـ Antillusion${st.behind ? ` (${st.behind} تغييرات)` : st.latest ? " " + st.latest : ""}`);
+}
+function showUpdateBanner(st) {
+  document.querySelector(".upd-banner")?.remove();
+  const bar = h("div", { class: "upd-banner" }, icoEl("refresh", 16), h("span", null, `تم تنزيل التحديث${st.latest ? " (" + st.latest + ")" : ""} — أعد تشغيل Antillusion لتطبيقه`),
+    h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل الآن"), h("button", { class: "ic-btn", title: "لاحقاً", onclick: () => bar.remove(), html: ico("x") }));
+  document.body.append(bar);
+}
+async function updateModal() {
+  const body = h("div", { class: "upd" });
+  modal("تحديث Antillusion", body, "wide");
+  const draw = (st) => {
+    if (!body.isConnected) { U.listeners.delete(draw); return; }
+    const busy = st.phase === "checking" || st.phase === "installing";
+    const pill = { idle: ["لم يُفحص بعد", ""], checking: ["جارٍ الفحص…", "busy"], installing: ["جارٍ التحديث…", "busy"], uptodate: ["أنت على أحدث إصدار", "ok"], available: ["يتوفر تحديث", "new"], ready: ["جاهز — أعد التشغيل", "new"], error: ["تعذّر الفحص", "bad"] }[st.phase] || ["", ""];
+    const ver = st.version ? "v" + st.version : "";
+    const hero = h("div", { class: "upd-hero" },
+      h("div", { class: "upd-logo" + (busy ? " spin" : ""), html: ico(st.phase === "ready" ? "check" : "refresh", 30) }),
+      h("div", { class: "upd-meta" }, h("b", null, "Antillusion " + ver), h("span", { class: "upd-pill " + pill[1] }, pill[0]),
+        h("small", { dir: "ltr" }, st.mode === "git" ? `${st.repo} · ${st.branch || ""} @ ${st.head || ""}${st.latest && st.available ? " → " + st.latest : ""}` : st.repo ? `${st.repo} · release${st.latest ? " " + st.latest : ""}` : ""),
+        st.checkedAt ? h("small", null, "آخر فحص: " + new Date(st.checkedAt).toLocaleTimeString("ar")) : null),
+      h("div", { class: "upd-actions" },
+        st.phase === "ready" ? h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل") :
+        st.available && st.mode === "git" ? h("button", { class: "btn primary", disabled: busy || st.dirty || st.ahead > 0, onclick: () => call("update:install") }, busy ? "جارٍ التحديث…" : "حدّث الآن") :
+        st.available && st.url ? h("button", { class: "btn primary", onclick: () => call("open:external", st.url) }, "تنزيل المثبّت") : null,
+        h("button", { class: "btn", disabled: busy, onclick: () => call("update:check") }, busy ? "…" : "افحص الآن")));
+    const parts = [hero];
+    if (st.error) parts.push(h("div", { class: "upd-note bad" }, "⚠ " + st.error));
+    if (st.dirty) parts.push(h("div", { class: "upd-note" }, "توجد تعديلات محلية غير محفوظة في ملفات المشروع، لذلك لن يُحدَّث تلقائياً حتى تحفظها أو تتراجع عنها."));
+    if (st.ahead > 0) parts.push(h("div", { class: "upd-note" }, `نسختك المحلية متقدمة بـ ${st.ahead} commit عن GitHub — لن يُطبَّق تحديث تلقائي.`));
+    if (st.note) parts.push(h("div", { class: "upd-note" }, st.note));
+    const list = st.phase === "ready" ? st.applied : st.commits;
+    if (list && list.length) parts.push(h("h4", null, st.phase === "ready" ? "ما الذي تغيّر" : `التغييرات الجديدة (${st.behind || list.length})`),
+      h("div", { class: "upd-log" }, list.map((c) => h("div", { class: "upd-c" }, h("code", { dir: "ltr" }, c.sha), h("span", { dir: "auto" }, c.subject), h("small", null, `${c.author} · ${c.when}`)))));
+    if (st.notes) parts.push(h("h4", null, "ملاحظات الإصدار"), h("pre", { class: "upd-notes", dir: "auto" }, st.notes));
+    if (st.installed) parts.push(h("div", { class: "upd-note ok" }, "حُدِّثت الاعتماديات (npm install) تلقائياً."));
+    const s = S.settings || {};
+    parts.push(h("h4", null, "الإعدادات"),
+      h("label", { class: "srow" }, h("div", null, h("b", null, "تحديث تلقائي"), h("small", null, "يفحص كل 3 ساعات وعند التشغيل، وينزّل التحديث عندما لا يكون الوكيل مشغولاً — ثم يطلب منك إعادة التشغيل")),
+        h("input", { type: "checkbox", checked: s.autoUpdate !== false, onchange: async (e) => { const r = await call("settings:set", { autoUpdate: e.target.checked }); if (r) S.settings = r; } })),
+      st.mode === "git" ? h("label", { class: "srow" }, h("div", null, h("b", null, "فرع التحديث"), h("small", null, "اتركه فارغاً لاستخدام الفرع الحالي")),
+        h("input", { class: "field", dir: "ltr", value: s.updateBranch || "", placeholder: st.branch || "main", onchange: async (e) => { const r = await call("settings:set", { updateBranch: e.target.value.trim() }); if (r) { S.settings = r; call("update:check"); } } })) : null);
+    body.replaceChildren(...parts.filter(Boolean));
+  };
+  U.listeners.add(draw); draw(U.st);
+  const st = await call("update:state"); if (st) { U.st = st; draw(st); }
+  if (!st || st.phase === "idle" || st.phase === "error") call("update:check");
 }
 
 async function libraryModal() {
@@ -768,6 +848,7 @@ function setupWizard() {
 
 function onEvt(e) {
   if (e.t === "servers") { S.servers = e.list; renderServers(); const t = activeTab(); if (t && t.kind === "web" && !t.wv) drawBlank(t); return; }
+  if (e.t === "update") return onUpdateState(e.state);
   if (e.t === "preview") return openPreview(e);
   if (e.t === "previewRead") return handlePreviewRead(e);
   if (e.t === "session" && !S.sess.has(e.sid)) { view(e.meta); syncMeta(e.meta); return renderSidebar(); }
@@ -800,14 +881,14 @@ function applyTheme() { document.documentElement.dataset.theme = S.settings.them
 
 function wire() {
   const inp = $("#input");
-  $("#btnUsage").innerHTML = ico("chart"); $("#btnLibrary").innerHTML = ico("book"); $("#btnPanel").innerHTML = ico("panelR"); $("#btnAttach").innerHTML = ico("plus", 17);
+  $("#btnUsage").innerHTML = ico("chart"); $("#btnUpdate").innerHTML = ico("download"); $("#btnLibrary").innerHTML = ico("book"); $("#btnPanel").innerHTML = ico("panelR"); $("#btnAttach").innerHTML = ico("plus", 17);
   $("#btnSide").innerHTML = ico("panel"); $("#btnBack").innerHTML = ico("arrowL"); $("#btnFwd").innerHTML = ico("arrowR"); $("#btnNewProject").innerHTML = ico("folderPlus", 15);
   $("#btnNew").replaceChildren(icoEl("plus", 16), "New Conversation"); $("#btnHistory").replaceChildren(icoEl("history", 16), "Conversation History"); $("#btnTasks").replaceChildren(icoEl("clock", 16), "Scheduled Tasks"); $("#btnSettings").replaceChildren(icoEl("gear", 16), "Settings");
   $("#btnTheme").onclick = async () => { S.settings = await call("settings:set", { theme: S.settings.theme === "light" ? "dark" : "light" }) || S.settings; applyTheme(); };
   $("#btnHistory").onclick = historyModal; $("#btnTasks").onclick = tasksModal; $("#btnBack").onclick = () => navGo(-1); $("#btnFwd").onclick = () => navGo(1);
   $("#btnSide").onclick = () => { const c = document.body.classList.toggle("noside"); store.set("noside", c); }; document.body.classList.toggle("noside", store.get("noside", false));
   $("#btnNewProject").onclick = async () => { const v = await newSession(); if (v) pickFolder(); };
-  $("#btnNew").onclick = () => newSession(); $("#btnUsage").onclick = usageModal; $("#btnLibrary").onclick = libraryModal; $("#btnSettings").onclick = settingsModal; $("#btnPanel").onclick = () => setPanel(!P.open);
+  $("#btnNew").onclick = () => newSession(); $("#btnUsage").onclick = usageModal; $("#btnUpdate").onclick = updateModal; $("#btnLibrary").onclick = libraryModal; $("#btnSettings").onclick = settingsModal; $("#btnPanel").onclick = () => setPanel(!P.open);
   $("#btnSend").onclick = () => (cur().running ? call("chat:stop", S.active) : send());
   $("#btnAttach").onclick = async () => { const l = await call("attach:pick"); if (l) addAttachments(l); };
   $("#btnPerm").onclick = (e) => menu(e.currentTarget, [{ head: "صلاحيات الوكيل في هذه الجلسة" }, ...Object.entries(PERMS).map(([k, [label, sub]]) => ({ label, sub, checked: cur().meta.perm === k, icon: k === "auto" ? "bolt" : k === "edits" ? "edit" : "shield", onClick: () => patchSession({ perm: k }) }))]);
@@ -862,4 +943,5 @@ function wire() {
   const tabs = store.get("tabs", []).filter((id) => S.sess.has(id));
   if (!tabs.length) await newSession(); else { S.tabs = tabs; const active = store.get("active"); await openSession(tabs.includes(active) ? active : tabs[0]); }
   if (!S.settings.setupDone || b.forceSetup) setupWizard();
+  call("update:state").then((st) => st && onUpdateState(st)); pollQuota(); setInterval(pollQuota, 60000);
 })();

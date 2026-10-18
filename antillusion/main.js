@@ -10,6 +10,7 @@ const { createStore, DEFAULTS } = require("./core/store");
 const { createAgent, uid } = require("./core/agent");
 const tools = require("./core/tools");
 const library = require("./core/library");
+const { createUpdater } = require("./core/updater");
 
 app.setName("Antillusion");
 if (process.env.ANTILLUSION_DATA) app.setPath("userData", process.env.ANTILLUSION_DATA);
@@ -48,7 +49,7 @@ function seedKey() {   // seed key, base url and default model from .env if need
 }
 const isOR = () => /openrouter\.ai/.test(baseUrl());
 // a self-hosted server (vLLM, llama.cpp, Ollama) needs no key at all
-const publicSettings = () => { const { keyEnc, keyPlain, ...rest } = store.settings(); return { ...rest, hasKey: !!getKey() || !isOR(), ownServer: !isOR() }; };
+const publicSettings = () => { const { keyEnc, keyPlain, ...rest } = store.settings(); return { ...rest, hasKey: !!getKey() || !isOR(), ownServer: !isOR(), keyUnencrypted: !!keyPlain }; };
 const modelsStale = () => { const l = store.models().list; if (!l.length) return true; if (!isOR()) return true; return l.some((m) => m.local) || l.some((m) => +m.pricing.prompt > 0) === (store.settings().freeOnly !== false); };
 const baseUrl = () => (store.settings().baseUrl || "http://localhost:20128/v1").replace(/\/+$/, "");
 
@@ -315,6 +316,8 @@ const H = {
   "worktree:create": worktreeCreate, "worktree:status": worktreeStatus, "worktree:merge": worktreeMerge, "worktree:remove": worktreeRemove,
   "servers:list": () => tools.serverList(), "servers:stop": (id) => tools.stopServer(id), "servers:logs": (id) => tools.serverLogs(id, 400),
   "usage:get": usageReport,
+  "update:state": () => updateState, "update:check": () => checkUpdate(), "update:install": () => installUpdate(),
+  "update:restart": () => { app.relaunch(); app.exit(0); return true; },
   "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; await ensureLocalRouter(); try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
   "library:read": (cardId, id) => { const s = id && store.getSession(id); return library.read(cardId, [store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
@@ -348,6 +351,31 @@ function onEvent(e) {
   if (process.env.ANTILLUSION_SELFTEST && e.t === "status" && e.running === false) { clearTimeout(shotTimer); shotTimer = setTimeout(() => capture("after-run"), 3500); }
   if (e.t === "item" && e.item.kind === "tool" && e.item.status !== "running") console.log(`[selftest] ${e.item.name} → ${e.item.status}: ${String(e.item.output).split("\n")[0].slice(0, 150)}`);
   if (e.t === "item" && e.item.kind === "notice") console.log(`[selftest] notice(${e.item.level}): ${e.item.text}`);
+}
+
+/* ---------- updates (GitHub) ---------- */
+
+let updater, updateState = { phase: "idle" };
+const npmInstall = (cwd) => new Promise((res) => execFile(process.platform === "win32" ? "npm.cmd" : "npm", ["install", "--no-audit", "--no-fund"], { cwd, windowsHide: true, shell: process.platform === "win32", timeout: 600000, maxBuffer: 2e7 }, (e, so, se) => res({ ok: !e, out: String(so || ""), err: String(se || (e && e.message) || "") })));
+const setUpdate = (patch) => { updateState = { ...updateState, ...patch }; send({ t: "update", state: updateState }); return updateState; };
+const branchPref = () => store.settings().updateBranch || "";
+async function checkUpdate({ auto } = {}) {
+  if (SELFTEST) return updateState;
+  if (updateState.phase === "checking" || updateState.phase === "installing") return updateState;
+  setUpdate({ phase: "checking", error: null });
+  try {
+    const st = await updater.check(branchPref());
+    setUpdate({ ...st, phase: st.available ? "available" : "uptodate", error: null });
+    if (auto && st.available && st.mode === "git" && store.settings().autoUpdate !== false && !st.dirty && !st.ahead && !agent.anyRunning()) return installUpdate();
+  } catch (e) { setUpdate({ phase: "error", error: e.message }); }
+  return updateState;
+}
+async function installUpdate() {
+  if (updateState.phase === "installing") return updateState;
+  setUpdate({ phase: "installing", error: null });
+  try { const r = await updater.apply(branchPref()); setUpdate({ ...r, phase: r.updated ? "ready" : "uptodate" }); }
+  catch (e) { setUpdate({ phase: "error", error: e.message }); }
+  return updateState;
 }
 
 /* ---------- window ---------- */
@@ -404,8 +432,9 @@ app.whenReady().then(() => {
   });
   tools.onServersChanged(() => send({ t: "servers", list: tools.serverList() }));
   for (const [ch, fn] of Object.entries(H)) ipcMain.handle(ch, async (e, ...args) => { try { return await fn(...args); } catch (err) { return { __error: err.message || String(err) }; } });
+  updater = createUpdater({ appDir: __dirname, git: (cwd, ...a) => git(cwd, ...a), npm: npmInstall });
   createWindow();
-  if (!SELFTEST) setInterval(tickTasks, 30000);
+  if (!SELFTEST) { setInterval(tickTasks, 30000); setTimeout(() => checkUpdate({ auto: true }), 8000); setInterval(() => checkUpdate({ auto: true }), 3 * 3600e3); }
 });
 
 app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });

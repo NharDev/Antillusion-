@@ -94,7 +94,13 @@ const DANGER = [
   /(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)\b[^|]*\|\s*(sh|bash|zsh|iex|Invoke-Expression|powershell|pwsh)\b/i,
   /\bInvoke-Expression\b|\biex\s/i, /:\(\)\s*\{.*\};\s*:/, /\bnpm\s+publish\b|\bdd\s+if=/i, /\bSet-ExecutionPolicy\b|\bnetsh\b|\bsc(\.exe)?\s+(delete|stop)\b/i,
 ];
-const isDangerous = (cmd) => DANGER.some((re) => re.test(String(cmd || "")));
+// normalise the usual evasions before matching: split flags (rm -r -f), long flags, quotes, line continuations, extra spaces
+const normCmd = (cmd) => {
+  let c = String(cmd || "").replace(/\\\r?\n/g, " ").replace(/["'`]/g, "").replace(/--recursive\b/gi, "-r").replace(/--force\b/gi, "-f").replace(/\s+/g, " ");
+  for (let prev; prev !== c;) { prev = c; c = c.replace(/(\s-[a-z]+)\s+-([a-z]+)/gi, "$1$2"); }
+  return c.replace(/(^|[\s;&|(])\/?(?:usr\/)?(?:s?bin\/)?(rm|dd|mkfs\S*)\b/g, "$1$2");   // /bin/rm → rm
+};
+const isDangerous = (cmd) => { const raw = String(cmd || ""), norm = normCmd(raw); return DANGER.some((re) => re.test(raw) || re.test(norm)); };
 
 /* ---------- helpers ---------- */
 
@@ -727,5 +733,5 @@ async function runTool(name, args, ctx) {
   catch (e) { return `Tool error (${name}): ${e.message}`; }
 }
 
-module.exports = { DEFS, toolDefs, kindOf, runTool, isDangerous, shellSpec, runProc, resolveIn, isInside, walk, globRe,
+module.exports = { DEFS, toolDefs, kindOf, runTool, isDangerous, normCmd, shellSpec, runProc, resolveIn, isInside, walk, globRe,
   serverList, serverLogs, stopServer, stopAllServers, onServersChanged };

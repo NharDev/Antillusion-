@@ -267,3 +267,18 @@ body, #titlebar, #sidebar, #composer, .tool, .modal, .pop { transition: backgrou
 .qprov { background: var(--raised); border: 1px solid var(--border-soft); border-radius: 10px; padding: 8px 12px; margin-top: 6px; }
 .qrow { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; } .qrow.sub { font: 11px var(--mono); color: var(--text-2); margin-top: 3px; }
 .qbar { height: 6px; border-radius: 3px; background: var(--border-soft); overflow: hidden; margin: 4px 0; } .qbar i { display: block; height: 100%; border-radius: 3px; }
+
+/* quota chip */
+.qchip { display: inline-flex; align-items: center; gap: 6px; } .qdot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+/* updates */
+.tb-btn { position: relative; } .tb-btn.has-update::after { content: ""; position: absolute; top: 7px; inset-inline-end: 7px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg, #121316); animation: updpulse 1.8s ease-in-out infinite; }
+@keyframes updpulse { 50% { transform: scale(1.35); opacity: .7; } }
+.upd-hero { display: flex; align-items: center; gap: 16px; padding: 16px; border-radius: 14px; background: linear-gradient(135deg, var(--accent-soft), var(--raised)); border: 1px solid var(--border-soft); flex-wrap: wrap; }
+.upd-logo { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; background: var(--accent); color: #fff; flex: none; } .upd-logo.spin svg { animation: updspin 1s linear infinite; } @keyframes updspin { to { transform: rotate(360deg); } }
+.upd-meta { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 200px; } .upd-meta b { font-size: 17px; } .upd-meta small { color: var(--muted); font: 11.5px var(--mono); }
+.upd-pill { align-self: flex-start; font-size: 12px; padding: 2px 10px; border-radius: 99px; background: var(--raised); border: 1px solid var(--border-soft); } .upd-pill.ok { color: #3fb950; border-color: #3fb95055; } .upd-pill.new { color: var(--accent); border-color: var(--accent); } .upd-pill.bad { color: #e5484d; border-color: #e5484d55; } .upd-pill.busy { color: #f5a524; }
+.upd-actions { display: flex; gap: 8px; }
+.upd-note { margin-top: 10px; padding: 8px 12px; border-radius: 10px; background: var(--raised); font-size: 13px; border: 1px solid var(--border-soft); } .upd-note.bad { color: #e5484d; } .upd-note.ok { color: #3fb950; }
+.upd-log { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow: auto; } .upd-c { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 8px; background: var(--raised); font-size: 13px; } .upd-c code { color: var(--accent); font-size: 12px; } .upd-c small { color: var(--muted); }
+.upd-notes { white-space: pre-wrap; background: var(--raised); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; max-height: 200px; overflow: auto; }
+.upd-banner { position: fixed; bottom: 18px; inset-inline-start: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; background: var(--raised); border: 1px solid var(--accent); box-shadow: 0 10px 40px #0008; font-size: 14px; }

@@ -9,7 +9,7 @@ const DEFAULTS = {
   baseUrl: "https://openrouter.ai/api/v1", model: "poolside/laguna-s-2.1:free", freeOnly: true, expert: false, expertModel: "anthropic/claude-opus-5.5", mode: "agent", perm: "ask", effort: "off",
   shell: "auto", maxTokens: 32000, maxSteps: 80, compactAt: 80, autoPreview: true, sessionBudget: 0, instructions: "", theme: "dark",
   favorites: ["poolside/laguna-s-2.1:free", "nvidia/nemotron-3-ultra-550b-a55b:free", "cohere/north-mini-code:free", "thinkingmachines/inkling:free"],
-  lastCwd: "",
+  lastCwd: "", autoUpdate: true, updateBranch: "",
 };
 
 function createStore(dir) {
