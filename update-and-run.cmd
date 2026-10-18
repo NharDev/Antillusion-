@@ -26,9 +26,18 @@ git fetch origin %BRANCH% || goto :fail
 git checkout %BRANCH% || goto :fail
 git pull --ff-only origin %BRANCH% || goto :fail
 cd antillusion
-if not exist node_modules (
+rem node_modules can exist while Electron's binary is missing (interrupted or blocked download), so test the exe itself
+if not exist node_modules\electron\dist\electron.exe (
   echo == Installing dependencies ==
   call npm install || goto :fail
+)
+if not exist node_modules\electron\dist\electron.exe (
+  echo == Electron binary missing, downloading it ==
+  node node_modules\electron\install.js || goto :fail
+)
+if not exist node_modules\electron\dist\electron.exe (
+  echo Electron could not be downloaded. Check your internet/VPN/antivirus, delete the node_modules folder and run again.
+  goto :fail
 )
 echo == Starting Antillusion ==
 start "" cmd /c npm start
