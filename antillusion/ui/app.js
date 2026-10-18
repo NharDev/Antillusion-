@@ -646,7 +646,8 @@ async function drawQuota(box) {
       h("div", { class: "ucard" }, h("small", null, "المزوّد الحالي"), h("b", { dir: "ltr" }, cur ? cur.provider : "—"), h("span", { dir: "auto" }, cur ? `${cur.plan ? cur.plan + " · " : ""}${fmtPct(cur.remainingPct)} متبقٍ` : "لم يُستخدم بعد"))),
     ...(q.providers.length ? q.providers.map((p) => h("div", { class: "qprov" },
       h("div", { class: "qrow" }, h("b", { dir: "ltr" }, p.provider + (cur && p.id && p.id === cur.id ? " ●" : "")), h("span", { dir: "ltr" }, (p.plan ? p.plan + " · " : "") + fmtPct(p.remainingPct))), bar(p.remainingPct),
-      ...p.quotas.map((x) => h("div", { class: "qrow sub", dir: "ltr" }, h("span", null, x.name), h("span", null, x.total != null && x.remaining != null ? `${Math.round(x.remaining).toLocaleString()} / ${Math.round(x.total).toLocaleString()}` : fmtPct(x.remainingPct), x.resetAt ? " · reset " + new Date(x.resetAt).toLocaleString() : ""))))) : [h("small", { class: "muted" }, "لا توجد بيانات حصص مخزّنة بعد — أرسل رسالة عبر OmniRoute ثم أعد المحاولة.")]));
+      ...p.quotas.map((x) => h("div", { class: "qrow sub", dir: "ltr" }, h("span", null, x.name), h("span", null, x.total != null && x.remaining != null ? `${Math.round(x.remaining).toLocaleString()} / ${Math.round(x.total).toLocaleString()}` : fmtPct(x.remainingPct), x.resetAt ? " · reset " + new Date(x.resetAt).toLocaleString() : ""))))) : [h("small", { class: "muted" }, "لا توجد بيانات حصص مخزّنة بعد — أرسل رسالة عبر OmniRoute ثم أعد المحاولة.")]),
+    h("details", { class: "qraw" }, h("summary", null, "البيانات الخام من OmniRoute (للتشخيص)"), h("pre", { dir: "ltr" }, JSON.stringify(q.raw, null, 2))));
 }
 
 /* ---------- OmniRoute quota chip + low-quota alert ---------- */
@@ -703,7 +704,8 @@ async function updateModal() {
         st.phase === "ready" ? h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل") :
         st.available && st.mode === "git" ? h("button", { class: "btn primary", disabled: busy || st.dirty || st.ahead > 0, onclick: () => call("update:install") }, busy ? "جارٍ التحديث…" : "حدّث الآن") :
         st.available && st.url ? h("button", { class: "btn primary", onclick: () => call("open:external", st.url) }, "تنزيل المثبّت") : null,
-        h("button", { class: "btn", disabled: busy, onclick: () => call("update:check") }, busy ? "…" : "افحص الآن")));
+        h("button", { class: "btn", disabled: busy, onclick: () => call("update:check") }, busy ? "…" : "افحص الآن"),
+        S.settings.prevHead && st.mode === "git" ? h("button", { class: "btn", disabled: busy, title: "العودة إلى النسخة التي كنت عليها قبل آخر تحديث", onclick: async () => { if (await ask("التراجع عن آخر تحديث؟", { input: false, ok: "تراجع", danger: true, note: "سيعود الكود إلى النسخة السابقة ويُوقَف التحديث التلقائي. أعد تشغيل التطبيق بعدها." })) { const r = await call("update:rollback"); if (r) { const ns = await call("settings:set", {}); if (ns) S.settings = ns; } } } }, "تراجع") : null));
     const parts = [hero];
     if (st.error) parts.push(h("div", { class: "upd-note bad" }, "⚠ " + st.error));
     if (st.dirty) parts.push(h("div", { class: "upd-note" }, "توجد تعديلات محلية غير محفوظة في ملفات المشروع، لذلك لن يُحدَّث تلقائياً حتى تحفظها أو تتراجع عنها."));

@@ -38,6 +38,11 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
   assert.strictEqual(r.updated, true); assert.strictEqual(r.installed, true); assert.strictEqual(installs, 1);
   assert.strictEqual(fs.readFileSync(path.join(b, "app", "new.txt"), "utf8"), "x");
   assert.strictEqual((await u.check()).available, false);
+  assert.ok(r.previous && r.previous.length >= 40);
+  await assert.rejects(u.rollback("nothex!"), /لا توجد/);
+  const rb = await u.rollback(r.previous);
+  assert.strictEqual(rb.rolledBack, true); assert.ok(!fs.existsSync(path.join(b, "app", "new.txt"))); assert.strictEqual(installs, 2);
+  assert.strictEqual((await u.check()).available, true);   // the update is offered again after a rollback
 
   // outside any checkout → release mode, driven by a stub GitHub API
   const plain = fs.mkdtempSync(path.join(os.tmpdir(), "plain-")); fs.writeFileSync(path.join(plain, "package.json"), '{"version":"1.0.0"}');

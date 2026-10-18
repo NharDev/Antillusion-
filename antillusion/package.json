@@ -15,6 +15,7 @@
     "test": "npm run test:unit"
   },
   "devDependencies": {
-    "electron": "^44.5.1"
+    "electron": "^44.5.1",
+    "@electron/packager": "^20.3.0"
   }
 }

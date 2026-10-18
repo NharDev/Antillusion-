@@ -2,7 +2,7 @@
    The agent itself lives in core/ and knows nothing about Electron. */
 "use strict";
 
-const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, Notification } = require("electron");
 const fs = require("fs");
 const path = require("path");
 const { execFile, spawn } = require("child_process");
@@ -316,7 +316,7 @@ const H = {
   "worktree:create": worktreeCreate, "worktree:status": worktreeStatus, "worktree:merge": worktreeMerge, "worktree:remove": worktreeRemove,
   "servers:list": () => tools.serverList(), "servers:stop": (id) => tools.stopServer(id), "servers:logs": (id) => tools.serverLogs(id, 400),
   "usage:get": usageReport,
-  "update:state": () => updateState, "update:check": () => checkUpdate(), "update:install": () => installUpdate(),
+  "update:state": () => updateState, "update:check": () => checkUpdate(), "update:install": () => installUpdate(), "update:rollback": rollbackUpdate,
   "update:restart": () => { app.relaunch(); app.exit(0); return true; },
   "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; await ensureLocalRouter(); try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
@@ -347,6 +347,9 @@ async function capture(tag) {
   app.quit();
 }
 function onEvent(e) {
+  if (!SELFTEST && e.t === "status" && e.running === false && win && !win.isDestroyed() && !win.isFocused() && Notification.isSupported()) {
+    try { const s = store.getSession(e.sid), n = new Notification({ title: "Antillusion", body: `انتهى الوكيل من العمل${s ? " — " + s.title : ""}`, silent: false }); n.on("click", () => { win.show(); win.focus(); }); n.show(); } catch {}
+  }
   if (!SELFTEST) return;
   if (process.env.ANTILLUSION_SELFTEST && e.t === "status" && e.running === false) { clearTimeout(shotTimer); shotTimer = setTimeout(() => capture("after-run"), 3500); }
   if (e.t === "item" && e.item.kind === "tool" && e.item.status !== "running") console.log(`[selftest] ${e.item.name} → ${e.item.status}: ${String(e.item.output).split("\n")[0].slice(0, 150)}`);
@@ -373,8 +376,17 @@ async function checkUpdate({ auto } = {}) {
 async function installUpdate() {
   if (updateState.phase === "installing") return updateState;
   setUpdate({ phase: "installing", error: null });
-  try { const r = await updater.apply(branchPref()); setUpdate({ ...r, phase: r.updated ? "ready" : "uptodate" }); }
+  try { const r = await updater.apply(branchPref()); if (r.updated && r.previous) store.setSettings({ prevHead: r.previous }); setUpdate({ ...r, phase: r.updated ? "ready" : "uptodate" }); }
   catch (e) { setUpdate({ phase: "error", error: e.message }); }
+  return updateState;
+}
+
+async function rollbackUpdate() {
+  if (agent.anyRunning()) throw new Error("الوكيل يعمل الآن — أوقفه أولاً");
+  const sha = store.settings().prevHead;
+  await updater.rollback(sha);
+  store.setSettings({ prevHead: "", autoUpdate: false });   // otherwise the next check would immediately re-apply the update
+  setUpdate({ phase: "ready", rolledBack: true, applied: [], error: null });
   return updateState;
 }
 

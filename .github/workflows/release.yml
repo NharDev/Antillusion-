@@ -1,0 +1,27 @@
+name: Release
+# Push a tag like v1.1.0 to build the Windows installer and attach it to a GitHub release;
+# installed copies of the app (not git checkouts) find it through the in-app updater.
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: antillusion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npm run test:unit
+      - run: node build/build.js
+      - name: Publish release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" ../antillusion-setup/Antillusion-Setup.exe --title "Antillusion ${{ github.ref_name }}" --generate-notes

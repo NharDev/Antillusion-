@@ -20,7 +20,8 @@ function normQuota(name, q) {
 
 function normProvider(p) {
   if (!p || typeof p !== "object") return null;
-  const raw = p.quotas, list = [];
+  let raw = p.quotas || p.limits || p.windows; const list = [];
+  if (raw && !Array.isArray(raw) && typeof raw === "object" && (raw.windows || raw.items || raw.quotas)) raw = raw.windows || raw.items || raw.quotas;
   if (Array.isArray(raw)) raw.forEach((q, i) => list.push(normQuota("quota " + (i + 1), q)));
   else if (raw && typeof raw === "object") Object.entries(raw).forEach(([k, q]) => list.push(normQuota(k, q)));
   const quotas = list.filter(Boolean), pcts = quotas.map((q) => q.remainingPct).filter((x) => x != null);
@@ -35,7 +36,7 @@ function normalize(j) {
   const current = normProvider(j.provider) || null;
   if (current && !providers.some((p) => p.id && p.id === current.id)) providers.unshift(current);
   const pcts = providers.map((p) => p.remainingPct).filter((x) => x != null);
-  return { providers, current, personal: j.personal || null,
+  return { providers, current, personal: j.personal || null, raw: j,
     overallPct: pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null };
 }
 

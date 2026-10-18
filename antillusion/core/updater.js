@@ -57,7 +57,7 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
     if (!st.available) return { ...st, updated: false };
     if (st.dirty) throw new Error("توجد تعديلات محلية غير محفوظة في ملفات المشروع — احفظها (commit) أو تراجع عنها أولاً");
     if (st.ahead > 0) throw new Error("نسختك المحلية تحتوي commits غير موجودة على GitHub (تباعد) — ادمج يدوياً");
-    const r = await root(), m = await git(r, "merge", "--ff-only", st.remoteBranch);
+    const r = await root(), prev = (await git(r, "rev-parse", "HEAD")).out, m = await git(r, "merge", "--ff-only", st.remoteBranch);
     if (!m.ok) throw new Error("فشل الدمج: " + (m.err || m.out).split("\n")[0]);
     let installed = false;
     if (st.needsInstall) {
@@ -65,10 +65,25 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
       if (!i.ok) throw new Error("حُدِّث الكود لكن فشل npm install: " + (i.err || "").split("\n")[0]);
       installed = true;
     }
-    return { ...(await check(branchPref)), updated: true, installed, applied: st.commits };
+    return { ...(await check(branchPref)), updated: true, installed, applied: st.commits, previous: prev };
   }
 
-  return { info, check, apply };
+  /** Goes back to the commit we were on before an update; only on a clean tree and only to an ancestor of HEAD. */
+  async function rollback(sha) {
+    const r = await root(); if (!r) throw new Error("التراجع متاح فقط للنسخ المثبّتة عبر git");
+    if (!/^[0-9a-f]{7,40}$/i.test(String(sha || ""))) throw new Error("لا توجد نسخة سابقة للتراجع إليها");
+    const dirty = await git(r, "status", "--porcelain", "--untracked-files=no");
+    if (dirty.ok && dirty.out) throw new Error("توجد تعديلات محلية غير محفوظة — احفظها أو تراجع عنها أولاً");
+    if (!(await git(r, "merge-base", "--is-ancestor", sha, "HEAD")).ok) throw new Error("النسخة السابقة ليست ضمن تاريخ المشروع الحالي");
+    const rel = path.relative(r, appDir).replace(/\\/g, "/"), pre = rel ? rel + "/" : "";
+    const files = await git(r, "diff", "--name-only", sha, "HEAD"), needsInstall = files.ok && files.out.split("\n").some((x) => x === pre + "package.json" || x === pre + "package-lock.json");
+    const m = await git(r, "reset", "--hard", sha);
+    if (!m.ok) throw new Error("فشل التراجع: " + (m.err || m.out).split("\n")[0]);
+    if (needsInstall) { const i = await npm(appDir); if (!i.ok) throw new Error("تم التراجع لكن فشل npm install: " + (i.err || "").split("\n")[0]); }
+    return { rolledBack: true, to: sha };
+  }
+
+  return { info, check, apply, rollback };
 }
 
 module.exports = { createUpdater, newer, REPO };

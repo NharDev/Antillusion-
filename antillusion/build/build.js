@@ -9,7 +9,8 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 
 const app = path.join(__dirname, ".."), root = path.join(app, "..");
-const tools = path.join(root, "desktop", "node_modules");
+// prefer the project's own dev dependencies; fall back to the older sibling ../desktop install
+const tools = [path.join(app, "node_modules"), path.join(root, "desktop", "node_modules")].find((d) => fs.existsSync(path.join(d, "@electron", "packager"))) || path.join(app, "node_modules");
 const electron = path.join(tools, "electron", "dist", "electron.exe");
 const version = require(path.join(tools, "electron", "package.json")).version;
 const outDir = path.join(root, "antillusion-build"), setupDir = path.join(root, "antillusion-setup"), packed = path.join(outDir, "Antillusion-win32-x64");
