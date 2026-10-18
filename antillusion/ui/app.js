@@ -116,6 +116,8 @@ async function openSession(id) {
   store.set("tabs", S.tabs); store.set("active", id);
   renderAll(); refreshGit(); $("#input").focus();
 }
+/** Antillusion Code: a session specialised for building and fixing software — smart model routing, a team, verified results. */
+function newCodeSession(init = {}) { return newSession({ kind: "code", mode: "agent", model: S.models.some((m) => m.id === "antillusion/auto") ? "antillusion/auto" : undefined, ...init }); }
 async function newSession(init) {
   const prev = cur();
   const d = await call("session:create", { cwd: prev ? prev.meta.baseCwd : S.settings.lastCwd || undefined, ...init }); if (!d) return null;
@@ -159,7 +161,7 @@ function renderSidebar() {
       h("div", { class: "proj-h", title: g.cwd }, icoEl("folder", 15), h("span", { dir: "auto" }, baseName(g.cwd) || g.cwd), h("button", { class: "mini", title: "محادثة جديدة في هذا المجلد", onclick: () => newSession({ cwd: g.cwd }), html: ico("plus", 13) })),
       shown.map((m) => { const v = S.sess.get(m.id);
         return h("div", { class: "sess" + (m.id === S.active ? " on" : ""), title: m.title, onclick: () => openSession(m.id) },
-          h("span", { class: "sess-t", dir: "auto" }, m.title), m.worktree ? h("span", { class: "wt-badge", html: ico("box", 12), title: "worktree" }) : null,
+          m.kind === "code" ? h("span", { class: "sess-code", title: "Antillusion Code" }, "</>") : null, h("span", { class: "sess-t", dir: "auto" }, m.title), m.worktree ? h("span", { class: "wt-badge", html: ico("box", 12), title: "worktree" }) : null,
           v && v.running ? h("span", { class: "spin" }) : v && v.unread ? h("span", { class: "dot" }) : h("span", { class: "sess-time" }, ago(m.updated)),
           h("button", { class: "sess-x", title: "حذف", onclick: (e) => { e.stopPropagation(); deleteSession(m.id); }, html: ico("trash", 13) })); }),
       g.list.length > 5 ? h("button", { class: "see-all", onclick: () => { all ? expanded.delete(k) : expanded.add(k); renderSidebar(); } }, all ? "عرض أقل" : `See all (${g.list.length})`) : null);
@@ -183,6 +185,7 @@ function renderHead() {
   const v = cur(); if (!v) return;
   const m = v.meta, g = v.git;
   $("#chatHead").replaceChildren(
+    m.kind === "code" ? h("span", { class: "code-pill", dir: "ltr" }, h("b", null, "</>"), "Antillusion Code") : null,
     h("button", { class: "crumb", title: m.cwd, onclick: (e) => folderMenu(e.currentTarget) }, h("span", { dir: "auto" }, baseName(m.baseCwd) || m.cwd)), h("span", { class: "crumb-sep" }, "/"),
     h("span", { class: "crumb cur", dir: "auto", title: "انقر مرتين لإعادة التسمية", ondblclick: renameSession }, m.title),
     h("span", { class: "grow" }),
@@ -307,7 +310,37 @@ function toolEl(v, it) {
   return h("div", { class: `tool st-${it.status}` + (open ? " open" : ""), data: { id: it.id } }, head, body.length ? h("div", { class: "tool-b" }, body) : null);
 }
 
+function codeHero() {
+  const ideas = [["لعبة شوتر ثلاثية الأبعاد", "اعمل لعبة شوتر ثلاثية الأبعاد للاعبين محليين بشاشة مقسومة، فيها M16 وقناص وديزرت إيجل ومسدس، مع دعم يد التحكم"],
+    ["تطبيق ويب كامل", "ابنِ تطبيق إدارة مهام كامل: واجهة جميلة، قاعدة بيانات، بحث وفلاتر، ووضع داكن"], ["أصلح مشروعي", "افحص هذا المشروع، شغّله، اعثر على الأخطاء وأصلحها كلها ثم اختبره"], ["API و قاعدة بيانات", "ابنِ REST API بقاعدة بيانات SQLite مع تحقق من المدخلات وتوثيق واختبارات"]];
+  const feats = [["route", "موجّه ذكي", "يختار أفضل نموذج لكل مهمة ويتعلّم من كل نتيجة"], ["person", "فريق وكلاء", "يقسّم المشاريع الكبيرة على عدة وكلاء يعملون بالتوازي"], ["check", "تسليم مُختبَر", "لا يقول «انتهيت» قبل أن يشغّل العمل ويتأكد أنه يعمل"]];
+  return h("div", { class: "code-hero" },
+    h("div", { class: "ch-title", dir: "ltr" }, h("span", null, "</>"), "Antillusion Code"),
+    h("p", null, "بيئة متخصصة بالبرمجة: تخطّط، توزّع العمل على فريق، تنفّذ، وتختبر قبل التسليم."),
+    h("div", { class: "ch-feats" }, feats.map(([i, t, d]) => h("div", { class: "ch-feat" }, h("i", { html: ico(i, 18) }), h("b", null, t), h("small", null, d)))),
+    h("div", { class: "suggest" }, ideas.map(([t, p]) => h("button", { title: p, onclick: () => { $("#input").value = p; autosize(); $("#input").focus(); } }, t))));
+}
+function teamEl(it) {
+  const st = { queued: ["في الانتظار", "q"], running: ["يعمل", "run"], done: ["أنجز", "ok"], error: ["تعثّر", "bad"], stopped: ["أُوقف", "q"] };
+  return h("div", { class: "team" + (it.done ? " done" : ""), data: { id: it.id } },
+    h("div", { class: "team-h" }, icoEl("person", 15), h("b", null, it.done ? "أنجز الفريق عمله" : `فريق من ${it.workers.length} وكلاء يعمل بالتوازي`), it.done ? null : h("span", { class: "spin" })),
+    h("div", { class: "team-grid" }, it.workers.map((w, i) => { const [label, cls] = st[w.status] || st.queued;
+      return h("div", { class: "worker " + cls }, h("div", { class: "w-top" }, h("span", { class: "w-n" }, String(i + 1)), h("b", { dir: "auto" }, w.title), h("span", { class: "w-st" }, label)),
+        h("div", { class: "w-files", dir: "ltr" }, (w.files || []).slice(0, 4).join("  ·  ")),
+        h("div", { class: "w-meta", dir: "ltr" }, w.model ? h("span", null, w.model) : null, w.steps ? h("span", null, `${w.steps} steps`) : null, w.errors ? h("span", { class: "bad" }, `${w.errors} errors`) : null),
+        w.last && w.status === "running" ? h("div", { class: "w-last", dir: "ltr" }, w.last) : null); })));
+}
+function verifyEl(it) {
+  const NAMES = { syntax: "الصياغة", refs: "الملفات المرتبطة", run: "التشغيل الفعلي", tests: "الاختبارات" };
+  const head = it.status === "running" ? "يختبر العمل قبل التسليم…" : it.status === "ok" ? "اجتاز الاختبار — العمل يعمل" : it.status === "fail" ? `وجد الاختبار مشاكل — يصلحها الوكيل الآن (جولة ${it.round} من 3)` : "لا توجد ملفات معدّلة لاختبارها";
+  return h("div", { class: "verify " + it.status, data: { id: it.id } },
+    h("div", { class: "vf-h" }, it.status === "running" ? h("span", { class: "spin" }) : icoEl(it.status === "ok" ? "check" : it.status === "fail" ? "x" : "eye", 15), h("b", null, head), it.files ? h("small", null, `${it.files} ملفاً`) : null),
+    (it.checks || []).length ? h("div", { class: "vf-checks" }, it.checks.map((c) => h("span", { class: "vf-c " + (c.ok ? "ok" : "bad") }, icoEl(c.ok ? "check" : "x", 12), h("b", null, NAMES[c.name] || c.name), h("small", null, c.detail)))) : null,
+    it.status === "fail" && (it.problems || []).length ? h("ul", { class: "vf-p", dir: "ltr" }, it.problems.slice(0, 5).map((p) => h("li", null, p))) : null);
+}
 function itemEl(v, it) {
+  if (it.kind === "team") return teamEl(it);
+  if (it.kind === "verify") return verifyEl(it);
   if (it.kind === "user") return h("div", { class: "msg user", data: { id: it.id } }, h("div", { class: "bubble" },
     (it.attachments || []).length ? h("div", { class: "u-atts" }, it.attachments.map((a) => a.thumb ? h("img", { src: a.thumb, title: a.name }) : h("span", { class: "att-chip" }, icoEl("file", 13), a.name))) : null,
     h("div", { class: "u-text", dir: "auto" }, it.text)));
@@ -358,7 +391,9 @@ function renderMsgs() {
   const v = cur(); if (!v) return;
   stick = true;
   $("#chat").classList.toggle("empty", !v.log.length);
-  $("#heroBottom").replaceChildren(v.log.length ? null : h("div", { class: "suggest" }, SUGGEST.map(([t, p]) => h("button", { title: p, onclick: () => { $("#input").value = p; autosize(); $("#input").focus(); } }, t))));
+  $("#chat").classList.toggle("code", v.meta.kind === "code");
+  $("#input").placeholder = v.meta.kind === "code" ? "صف ما تريد بناءه أو إصلاحه — Antillusion Code يخطّط، يوزّع العمل، ينفّذ ويختبر" : "Ask anything, @ to mention, / for actions";
+  $("#heroBottom").replaceChildren(v.log.length ? null : v.meta.kind === "code" ? codeHero() : h("div", { class: "suggest" }, SUGGEST.map(([t, p]) => h("button", { title: p, onclick: () => { $("#input").value = p; autosize(); $("#input").focus(); } }, t))));
   if (!v.log.length) { msgs().replaceChildren(); return; }
   msgs().replaceChildren(...v.log.map((it) => itemEl(v, it)));
   msgs().scrollTop = msgs().scrollHeight;
@@ -687,6 +722,7 @@ async function settingsModal(openTab) {
       R("عنوان الـAPI", "أي سيرفر متوافق مع OpenAI: OmniRoute، vLLM، Ollama", urlInp),
     ], notes: [keyNote, keyWarn] },
     { id: "agent", title: "الوكيل", icon: "bolt", sub: "السلوك الافتراضي والصلاحيات والأدوات", rows: [
+      R("التحقق قبل التسليم", "يختبر الوكيل عمله قبل أن يقول «انتهيت»: الصياغة، الملفات المفقودة، تشغيل الصفحة فعلياً، والاختبارات — ويصلح ما يجده (كاملاً في Antillusion Code)", switchEl(s.verify !== false, (v) => save({ verify: v })), { tight: true }),
       R("الوضع الافتراضي", "كيف تبدأ الجلسات الجديدة", segEl({ agent: "كود", plan: "خطة", ask: "سؤال" }, s.mode, (k) => save({ mode: k })), { tight: true }),
       R("الصلاحيات الافتراضية", "تُطبَّق على الجلسات الجديدة", sel("perm", { ask: PERMS.ask[0], edits: PERMS.edits[0], auto: PERMS.auto[0] })),
       R("الطرفية", "auto = Git Bash إن وُجد وإلا PowerShell", sel("shell", { auto: "تلقائي", bash: "Git Bash", powershell: "PowerShell", cmd: "cmd" })),
@@ -842,7 +878,7 @@ function showUpdateBanner(st) {
   document.body.append(bar);
 }
 /* ---------- What's New: a release presented like a phone OS update, once per minor version ---------- */
-const WN_TINT = { drop: "#4aa3ff", spark: "#f5b14c", sparkle: "#f5b14c", pulse: "#3ecf8e", route: "#38bdc9", clock: "#7aa2ff", gamepad: "#ff8a4c", film: "#ff7a59", bolt: "#f5b14c", download: "#4aa3ff", chart: "#3ecf8e" };
+const WN_TINT = { person: "#5b8def", check: "#3ecf8e", term: "#4aa3ff", bug: "#ff7a59", drop: "#4aa3ff", spark: "#f5b14c", sparkle: "#f5b14c", pulse: "#3ecf8e", route: "#38bdc9", clock: "#7aa2ff", gamepad: "#ff8a4c", film: "#ff7a59", bolt: "#f5b14c", download: "#4aa3ff", chart: "#3ecf8e" };
 function whatsNew(rel, all = [], opts = {}) {
   if (!rel) return;
   const close = async () => { wrap.classList.add("out"); setTimeout(() => wrap.remove(), 260); document.removeEventListener("keydown", onKey); if (!opts.preview) { const r = await call("settings:set", { seenRelease: rel.version }); if (r) S.settings = r; } };
@@ -894,7 +930,7 @@ function scoutBox(redraw) {
     fresh && sc.ok.length ? h("div", { class: "scout-ok" }, sc.ok.map((x) => h("button", { class: "rt-hop ok", title: "استخدمه", onclick: () => { patchSession({ model: x.id }); toast("تم التبديل إلى " + x.id); } }, h("i"), h("b", null, x.id), h("small", null, (x.ms / 1000).toFixed(1) + " ث")))) : null);
 }
 async function healthModal() {
-  const r = await call("router:health"); if (r) { S.health = r.models || {}; if (r.diag) S.diag = r.diag; if (r.scout) S.settings.scout = r.scout; }
+  const r = await call("router:health"); if (r) { S.health = r.models || {}; if (r.diag) S.diag = r.diag; if (r.scout) S.settings.scout = r.scout; S.ranking = r.ranking; }
   const body = h("div", { class: "health" });
   const m = modal("صحة النماذج", body, "wide");
   const draw = () => {
@@ -905,6 +941,8 @@ async function healthModal() {
     body.replaceChildren(
       h("p", { class: "muted", style: "margin:0 0 14px" }, "يتتبّع Antillusion كل نموذج يمرّ عبر الموجّه: النماذج المتعطّلة تُتجاوز تلقائياً لفترة تناسب سبب العطل (دقيقة لحدّ الطلبات، 10 دقائق لنفاد الرصيد)، ثم تُجرَّب من جديد."),
       scoutBox(draw),
+      S.ranking && S.ranking.code && S.ranking.code.length ? h("div", { class: "h-sec" }, h("h4", null, "اختيارات الموجّه الذكي الآن"), h("div", { class: "rank-rows" },
+        [["code", "للبرمجة"], ["reason", "للتخطيط وقيادة الفريق"], ["fast", "للمهام السريعة"]].map(([k, l]) => h("div", { class: "rank-row" }, h("span", null, l), h("div", { dir: "ltr" }, (S.ranking[k] || []).map((id, i) => h("span", { class: "rt-hop" + (i ? "" : " ok") }, h("i"), h("b", null, id)))))))) : null,
       S.diag && S.diag.providers && S.diag.providers.length ? h("div", { class: "h-sec" }, h("h4", null, "تشخيص المزوّدين — آخر فشل"), diagEl(S.diag.providers)) : null,
       h("div", { class: "h-sum" }, [["ok", "تعمل"], ["cool", "في تبريد"], ["down", "متعطّلة"], ["unknown", "لم تُجرَّب"]].map(([k, l]) => h("div", { class: "h-stat " + k }, h("b", null, String(counts[k] || 0)), h("span", null, l)))),
       h("div", { class: "h-grid" }, ids.map((id) => { const x = (S.health || {})[id] || {}, st = healthOf(id);
@@ -1154,7 +1192,9 @@ function wire() {
     store.set("noside", hide);
   }; document.body.classList.toggle("noside", store.get("noside", false));
   $("#btnNewProject").onclick = async () => { const v = await newSession(); if (v) pickFolder(); };
-  $("#btnNew").onclick = () => newSession(); $("#btnUsage").onclick = usageModal; $("#btnSkills").onclick = skillsModal; $("#btnExpand").onclick = expandPromptUI; $("#btnUpdate").onclick = updateModal; $("#btnLibrary").onclick = libraryModal; $("#btnSettings").onclick = settingsModal; $("#btnPanel").onclick = () => setPanel(!P.open);
+  $("#btnNew").onclick = () => newSession();
+  $("#btnNewCode").replaceChildren(h("span", { class: "code-glyph" }, "</>"), h("span", null, "Antillusion Code"), h("span", { class: "new-tag" }, "جديد"));
+  $("#btnNewCode").onclick = () => newCodeSession(); $("#btnUsage").onclick = usageModal; $("#btnSkills").onclick = skillsModal; $("#btnExpand").onclick = expandPromptUI; $("#btnUpdate").onclick = updateModal; $("#btnLibrary").onclick = libraryModal; $("#btnSettings").onclick = settingsModal; $("#btnPanel").onclick = () => setPanel(!P.open);
   $("#btnSend").onclick = () => (cur().running ? call("chat:stop", S.active) : send());
   $("#btnAttach").onclick = async () => { const l = await call("attach:pick"); if (l) addAttachments(l); };
   $("#btnPerm").onclick = (e) => menu(e.currentTarget, [{ head: "صلاحيات الوكيل في هذه الجلسة" }, ...Object.entries(PERMS).map(([k, [label, sub]]) => ({ label, sub, checked: cur().meta.perm === k, icon: k === "auto" ? "bolt" : k === "edits" ? "edit" : "shield", onClick: () => patchSession({ perm: k }) }))]);

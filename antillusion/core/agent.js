@@ -9,6 +9,9 @@ const tools = require("./tools");
 const library = require("./library");
 const skills = require("./skills");
 const scoutLib = require("./scout");
+const verifyLib = require("./verify");
+const { createRouter, AUTO } = require("./router");
+const { AsyncLocalStorage } = require("async_hooks");
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const NLCH = String.fromCharCode(10);
@@ -39,6 +42,14 @@ function shrinkMsg(m) {
   return m;
 }
 
+const CODE_TEXT = `# Antillusion Code
+You are Antillusion Code — a senior engineering agent specialised in building and fixing real software. Quality bar: it runs, it is complete, it is clean.
+- Engineering loop: understand the codebase (the repository map below; read before you edit) → short plan (todo_write when 4+ steps) → implement in small increments → run → fix.
+- Match the project's conventions. No placeholders, no "TODO: implement", no fake data unless asked.
+- Large builds with 3+ separable parts (engine / UI / levels / audio / data…): call delegate with 2–4 tasks that each own different files, plus shared context with the exact interfaces between files. Workers run in parallel; you then integrate, check that names and imports match, and finish the glue.
+- When you stop calling tools, Antillusion verifies your work automatically: syntax of every changed file, missing referenced files, the page actually run in a browser (console errors, blank screen, frozen game loop) and the project's tests. If it reports problems, fix them all.
+- Prefer a starter template when one fits the request — they are tested.`;
+
 const SELF_DEV = `# Self-Development and Introspection Capabilities (Antillusion)
 - You have full awareness and tools to inspect and safely modify your own codebase (the Antillusion project itself).
 - project_fork_status: check original, backup (antillusion_backup), and active dev fork (antillusion_dev).
@@ -62,7 +73,7 @@ function systemPrompt(s, settings, libraryDirs) {
 - Date: ${new Date().toISOString().slice(0, 10)}
 - ${MODE_TEXT[s.mode] || MODE_TEXT.agent}
 
-${s.selfDev ? SELF_DEV : ""}# Speed (the user is watching and waiting)
+${s.selfDev ? SELF_DEV : ""}${s.kind === "code" && !s.worker ? CODE_TEXT + "\n\n" + (s._repoMap || "") + "\n\n" : ""}# Speed (the user is watching and waiting)
 - Act immediately. No preamble, no restating the request, no long plan in prose. One short sentence, then tool calls.
 - Batch: issue all independent tool calls (several reads, searches, lookups) together in ONE turn — they run in parallel. To look at several files use read_many (one call); to change several places in one file use multi_edit (one call, atomic) instead of repeated edit_file.
 - New/empty workspace: do not explore it. Use use_template ONLY when the user message carries a <starter_template> hint, or the request is plainly the same kind of thing as a template below (a store → store, a Minecraft-like game → voxel-game). Then make targeted edit_file changes — never rewrite a template. For anything else (a calculator, Tetris, a quiz, a converter…) do NOT use a template: write the files directly.
@@ -141,13 +152,17 @@ function mergeReasoning(list, parts) {
  * @param getKey  () => string
  * @param ui      { openPreview({url,title,sid}), previewRead({js}) => Promise }
  */
-function createAgent({ store, emit, getKey, ui }) {
+function createAgent({ store, emit: rootEmit, getKey, ui }) {
+  // team workers run inside their own async context: their events feed the team card instead of the main chat
+  const als = new AsyncLocalStorage();
+  const emit = (ev) => { const c = als.getStore(); if (c) c.emit(ev); else rootEmit(ev); };
+  const router = createRouter({ dir: store.dir });
   const running = new Map();   // sid -> { ac }
   const waiting = new Map();   // reqId -> { sid, resolve }
 
   const upsert = (s, item) => { const i = s.log.findIndex((x) => x.id === item.id); if (i < 0) s.log.push(item); else s.log[i] = item; emit({ t: "item", sid: s.id, item }); return item; };
   const notice = (s, text, level = "info", extra) => upsert(s, { id: uid(), kind: "notice", text, level, at: Date.now(), ...(extra || {}) });
-  const pushUsage = (s) => emit({ t: "usage", sid: s.id, usage: s.usage, ctx: s.ctx });
+  const pushUsage = (s) => { if (!s.worker) emit({ t: "usage", sid: s.id, usage: s.usage, ctx: s.ctx }); };
   const libDirs = (s) => [store.userLibraryDir && store.userLibraryDir(), path.join(s.cwd, ".antillusion", "library")];
 
   async function request(body, signal) {
@@ -214,15 +229,20 @@ function createAgent({ store, emit, getKey, ui }) {
   const health = new Map();
   const noteHealth = (model, ok, info = {}) => { const h = health.get(model) || { ok: 0, fail: 0 }; if (ok) { h.ok++; h.ms = info.ms; h.lastOk = Date.now(); } else { h.fail++; h.last = info.label; h.kind = info.kind; h.lastFail = Date.now(); } health.set(model, h); emit({ t: "health", model, health: { ...h, until: bad.get(model) || 0 } }); };
   const isBad = (id) => { const t = bad.get(id); if (t && t < Date.now()) bad.delete(id); return !!(t && t >= Date.now()); };
+  const scoutedSet = () => { const st = store.settings(); return new Set(st.scout && Date.now() - st.scout.at < 6 * 3600e3 ? st.scout.ok.map((x) => x.id) : []); };
+  const allModels = () => ((store.models && store.models().list) || []).filter((m) => m.id !== AUTO);
+  const ranked = (role = "code", exclude = []) => router.rank(allModels(), role, { exclude, isBad, scouted: scoutedSet() });
   function fallbackOrder(s, tried = []) {
     const st = store.settings(), have = new Set(((store.models && store.models().list) || []).map((m) => m.id)), out = [];
     const sc = st.scout && Date.now() - st.scout.at < 6 * 3600e3 ? st.scout.ok.map((x) => x.id) : [];
-    for (const id of [s.model, ...(st.favorites || []), ...sc, ...PREFERRED, ...have]) if (id && (id === s.model || have.has(id)) && !out.includes(id) && !tried.includes(id) && !isBad(id)) out.push(id);
+    const learned = router.rank([...have], "code", { exclude: tried, isBad, scouted: new Set(sc), limit: 10 });
+    for (const id of [s.model, ...(st.favorites || []), ...sc, ...learned, ...PREFERRED, ...have]) if (id && id !== AUTO && (id === s.model || have.has(id)) && !out.includes(id) && !tried.includes(id) && !isBad(id)) out.push(id);
     return out.slice(0, 8);
   }
 
   async function complete(s, signal) {
-    const st = store.settings(), info = store.modelInfo(s.model) || {};
+    if (s.model === AUTO && !s._cur) s._cur = fallbackOrder(s)[0] || null;
+    const st = store.settings(), info = store.modelInfo(s._cur || s.model) || {};
     const readOnly = s.mode !== "agent";
     const anthropic = /^anthropic\//.test(s.model);
     const lite = !!s._lite;   // a provider said the request is too big: short prompt, compact tools, references left in the library
@@ -236,7 +256,7 @@ function createAgent({ store, emit, getKey, ui }) {
         if (tp) { tp.cache_control = { type: "ephemeral" }; msgs[msgs.length - 1] = { ...last, content: parts }; }
       }
     }
-    const body = { model: s.model, messages: msgs, tools: tools.toolDefs(readOnly, !!st.expert, { selfDev: !!s.selfDev, compact: !!s._lite }), stream: true, usage: { include: true }, max_tokens: Math.min(st.maxTokens || 32000, (info.top_provider && info.top_provider.max_completion_tokens) || 1e9) };
+    const body = { model: s._cur || s.model, messages: msgs, tools: tools.toolDefs(readOnly, !!st.expert, { selfDev: !!s.selfDev, compact: !!s._lite, team: s.kind === "code" && !s.worker }), stream: true, usage: { include: true }, max_tokens: Math.min(st.maxTokens || 32000, (info.top_provider && info.top_provider.max_completion_tokens) || 1e9) };
     // "no thinking" must be sent explicitly: many models reason by default, which is where most of the waiting went
     if ((info.supported_parameters || []).includes("reasoning")) body.reasoning = s.effort && s.effort !== "off" ? { effort: s.effort } : { enabled: false };
     if (/openrouter\.ai/.test(st.baseUrl || "openrouter.ai")) {
@@ -265,7 +285,7 @@ function createAgent({ store, emit, getKey, ui }) {
     const onOuter = () => cut("user"); if (signal.aborted) cut("user"); else signal.addEventListener("abort", onOuter, { once: true });
     const firstMs = (st.firstByteTimeout || 90) * 1000, idleMs = (st.idleTimeout || 60) * 1000;
     const arm = (ms) => { clearTimeout(dog); dog = setTimeout(() => cut("timeout"), ms); };
-    const slot = running.get(s.id); if (slot) slot.cut = cut;
+    const slot = s.worker ? null : running.get(s.id); if (slot) slot.cut = cut;
     const fail = (e) => {
       if (why === "user" || signal.aborted) return abortErr();
       if (why === "switch") return Object.assign(new Error("switched"), { switched: true });
@@ -383,6 +403,7 @@ function createAgent({ store, emit, getKey, ui }) {
   const cmdKey = (cmd) => String(cmd).trim().split(/\s+/).slice(0, 2).join(" ").toLowerCase();
 
   function approvalNeeded(s, name, a) {
+    if (name === "delegate") return null;
     const kind = tools.kindOf(name);
     if (kind === "read") return null;
     if (kind === "write") {
@@ -467,7 +488,7 @@ function createAgent({ store, emit, getKey, ui }) {
     const sig = tc.name + ":" + tc.args, rep = (s._seen || (s._seen = new Map()));
     rep.set(sig, (rep.get(sig) || 0) + 1);
     if (rep.get(sig) >= 3 && tools.kindOf(tc.name) !== "read") { item.status = "error"; item.output = "نداء مكرَّر — أُوقف"; upsert(s, item); return "You have made this exact call 3 times. It will not behave differently. Stop repeating it: re-read the relevant file, change the approach, or finish and tell the user what is blocking you."; }
-    let out = await tools.runTool(tc.name, args, ctx);
+    let out = tc.name === "delegate" ? await runTeam(s, args, signal) : await tools.runTool(tc.name, args, ctx);
     const failed = /SYNTAX CHECK FAILED|^(Tool error|old_string|Could not|Timed out|The process ended|Preview error)|console errors \(\d+\)|LOAD FAILED|\[exit code (?!0\])\S+\]\s*$/.test(out);
     s._fails = failed ? (s._fails || 0) + 1 : 0;
     if (s._fails >= 3 && store.settings().expert && !s._noExpert && !signal.aborted) {   // three failures in a row: bring in the senior
@@ -521,6 +542,112 @@ function createAgent({ store, emit, getKey, ui }) {
     if (used > max * ((st.compactAt || 80) / 100) - (st.maxTokens || 16000)) await compact(s, signal, false);
   }
 
+  /* ---------- Antillusion Code: repository map, verification, the team ---------- */
+
+  /** A compact map of the workspace: tree (depth 3), package scripts/deps, README head. Cached per run. */
+  function repoMap(cwd) {
+    const lines = [], SKIP = /^(node_modules|\.git|dist|build|out|\.next|\.cache|coverage|__pycache__|venv|\.venv|target|\.antillusion)$/;
+    let count = 0;
+    const walk = (d, depth, pre) => {
+      if (depth > 3 || count > 140) return;
+      let ents; try { ents = fs.readdirSync(d, { withFileTypes: true }).filter((e) => !e.name.startsWith(".") || e.name === ".env.example").sort((a, b) => (b.isDirectory() - a.isDirectory()) || a.name.localeCompare(b.name)); } catch { return; }
+      for (const e of ents) {
+        if (++count > 140) { lines.push(pre + "…"); return; }
+        if (e.isDirectory()) { if (SKIP.test(e.name)) { lines.push(`${pre}${e.name}/ (skipped)`); continue; } lines.push(`${pre}${e.name}/`); walk(path.join(d, e.name), depth + 1, pre + "  "); }
+        else { let sz = 0; try { sz = fs.statSync(path.join(d, e.name)).size; } catch {} lines.push(`${pre}${e.name}${sz > 2048 ? ` (${Math.round(sz / 1024)}k)` : ""}`); }
+      }
+    };
+    walk(cwd, 1, "");
+    let extra = "";
+    try { const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf8")); extra += `\npackage.json: ${pkg.name || ""} · scripts: ${Object.keys(pkg.scripts || {}).join(", ") || "-"} · deps: ${Object.keys({ ...pkg.dependencies, ...pkg.devDependencies }).slice(0, 30).join(", ") || "-"}`; } catch {}
+    try { const rd = fs.readFileSync(path.join(cwd, "README.md"), "utf8").split(/\r?\n/).filter(Boolean).slice(0, 8).join(" / "); if (rd) extra += `\nREADME: ${rd.slice(0, 500)}`; } catch {}
+    return `# Repository map (${cwd})\n${lines.length ? lines.join("\n") : "(empty folder — a new project)"}${extra}`.slice(0, 5000);
+  }
+
+  function runTests(cmd, cwd) {
+    return new Promise((resolve) => require("child_process").exec(cmd, { cwd, timeout: 180000, maxBuffer: 4 << 20, windowsHide: true, env: { ...process.env, CI: "1", FORCE_COLOR: "0" } },
+      (e, so, se) => resolve({ code: e ? (typeof e.code === "number" ? e.code : 1) : 0, out: String(so) + String(se) })));
+  }
+
+  /** Runs when the model says it is done. Problems found → they go back to the model and the run continues (max 3 rounds). */
+  async function verifyGate(s, signal, since) {
+    const st = store.settings(), code = s.kind === "code";
+    if (st.verify === false || s.mode !== "agent" || s.worker || (s._verifyRounds || 0) >= 3) return false;
+    const card = { id: uid(), kind: "verify", status: "running", checks: [], round: (s._verifyRounds || 0) + 1, at: Date.now() };
+    if (code) upsert(s, card);
+    emit({ t: "activity", sid: s.id, text: "يختبر العمل قبل التسليم…" });
+    let r;
+    try { r = await verifyLib.verifyWorkspace({ cwd: s.cwd, since, syntaxCheck: tools.syntaxCheck, verifyPage: code && ui && ui.verifyPage, runTests: code ? runTests : null, level: code ? "full" : "static", signal }); }
+    catch (e) { if (signal.aborted) throw abortErr(); r = { checks: [], problems: [], files: [] }; }
+    if (!r.files.length) { if (code) { card.status = "skip"; upsert(s, card); } return false; }
+    card.checks = r.checks; card.files = r.files.length; card.status = r.problems.length ? "fail" : "ok"; card.problems = r.problems.map((p) => p.split("\n")[0].slice(0, 220));
+    if (code || r.problems.length) upsert(s, card);
+    if (!r.problems.length) return false;
+    s._verifyRounds = (s._verifyRounds || 0) + 1;
+    s.messages.push({ role: "user", content: `[Automatic verification — round ${s._verifyRounds} of 3] Antillusion checked the files you changed and found problems. Fix every one now (read the files involved first), then finish with a short summary.\n\n${r.problems.join("\n\n")}` });
+    return true;
+  }
+
+  /** delegate tool: 2–4 workers build separate files in parallel, each on the best available model; returns their reports. */
+  async function runTeam(s, args, signal) {
+    const tasks = Array.isArray(args.tasks) ? args.tasks.filter((t) => t && t.instructions).slice(0, 4) : [];
+    if (tasks.length < 2) return "delegate needs 2–4 tasks, each with title, instructions and the files it owns. For a single task just do it yourself.";
+    let models = ranked("code").slice(0, 6); if (!models.length) models = [s._cur || s.model];
+    const team = { id: uid(), kind: "team", workers: tasks.map((t) => ({ title: String(t.title || "مهمة"), files: (t.files || []).map(String), status: "queued", model: "", steps: 0, last: "" })), at: Date.now() };
+    upsert(s, team);
+    let lastPush = 0;
+    const push = (force) => { const now = Date.now(); if (force || now - lastPush > 350) { lastPush = now; upsert(s, { ...team, workers: team.workers.map((w) => ({ ...w })) }); } };
+    const results = new Array(tasks.length); let next = 0;
+    const lane = async () => { while (next < tasks.length && !signal.aborted) { const i = next++; results[i] = await runWorker(s, tasks[i], String(args.context || ""), i, models, team.workers[i], push, signal); } };
+    await Promise.all(Array.from({ length: Math.min(3, tasks.length) }, lane));
+    if (signal.aborted) throw abortErr();
+    team.done = true; push(true);
+    return results.map((r, i) => `### Worker ${i + 1}: ${tasks[i].title} — ${r.ok ? "done" : "FAILED"} (model ${team.workers[i].model})\nOwned files: ${(tasks[i].files || []).join(", ")}\n${r.summary}`).join("\n\n")
+      + "\n\nNext: read the key files, make sure the parts fit (imports, exported names, element ids, events), fix mismatches, finish anything a worker left undone, then stop — verification runs automatically.";
+  }
+
+  async function runWorker(parent, task, context, i, models, w, push, signal) {
+    const child = { id: parent.id, kind: "worker", worker: true, title: parent.title, cwd: parent.cwd, baseCwd: parent.baseCwd, mode: "agent", perm: parent.perm, allow: parent.allow, effort: parent.effort,
+      model: models[i % models.length], messages: [], log: [], todos: [], checkpoints: parent.checkpoints || (parent.checkpoints = {}), usage: parent.usage, ctx: { used: 0, max: 0 }, _seen: new Map(), _fails: 0, _noExpert: true };
+    const files = (task.files || []).map((f) => "- " + f).join("\n") || "- (decide the file names yourself and list them in your summary)";
+    child.messages.push({ role: "user", content: `You are worker ${i + 1} of a team building one project in ${parent.cwd}. A lead engineer planned the work and will integrate everyone's files.\n\n# Shared context\n${context || "(none)"}\n\n# Your task: ${task.title}\n${task.instructions}\n\n# Files you own — create/edit ONLY these\n${files}\n\nWork fast and completely: write your files (each write under ~150 lines; split big files into several writes), no placeholders. Do not start servers or previews — the lead verifies the whole project. Then reply with a 3–6 line summary: what you built, the exact names/interfaces other files rely on, and anything left undone.` });
+    w.status = "running"; w.model = child.model; push(true);
+    const forwarded = new Set();
+    const ctx = { emit: (ev) => {
+      if (ev.t !== "item") return;
+      const it = ev.item;
+      if (it.kind === "tool") {
+        if (it.perm || forwarded.has(it.id)) { forwarded.add(it.id); rootEmit(ev); }   // approvals still reach the user
+        w.last = `${it.name} ${(it.args && (it.args.path || it.args.command || it.args.pattern || "")) || ""}`.slice(0, 90); if (it.status === "error") w.errors = (w.errors || 0) + 1; push();
+      } else if (it.kind === "assistant" && it.text) { w.say = it.text.slice(-140); push(); }
+    } };
+    return als.run(ctx, async () => {
+      let summary = "", tries = 0;
+      for (let step = 0; step < 30 && !signal.aborted; step++) {
+        let res; const t0 = Date.now();
+        try { res = await complete(child, signal); router.record(child.model, { ok: true, ms: Date.now() - t0, cut: res.finish === "length" }); }
+        catch (e) {
+          if (signal.aborted || e.name === "AbortError") throw abortErr();
+          const why = classify(e); router.record(child.model, { ok: false, kind: why.kind }); bad.set(child.model, Date.now() + why.ms);
+          if (!child._lite && (e.status === 413 || SIZE_ERR.test(String(e.message)))) { child._lite = true; step--; continue; }
+          if (++tries > 3) { w.status = "error"; w.last = why.label; push(true); return { ok: false, summary: "Worker could not reach a working model: " + why.label + ". Do this task yourself." }; }
+          child.model = ranked("code", [child.model])[0] || models[(i + tries) % models.length]; w.model = child.model; push(true); step--; continue;
+        }
+        if (res.finish === "length" && !res.toolCalls.length && !String(res.message.content || "").trim()) { child._boost = Math.min(store.settings().maxTokens || 32000, (child._boost || 8192) * 2); step--; continue; }
+        child.messages.push(res.message);
+        if (!res.toolCalls.length) { summary = String(res.message.content || "").trim(); break; }
+        w.steps++; push();
+        for (const tc of res.toolCalls) {
+          if (signal.aborted) break;
+          const out = await execTool(child, tc, signal).catch((e) => "Tool error: " + e.message);
+          child.messages.push({ role: "tool", tool_call_id: tc.id, content: out });
+        }
+      }
+      w.status = signal.aborted ? "stopped" : "done"; push(true);
+      return { ok: true, summary: summary || "(finished without a summary)" };
+    });
+  }
+
   /* ---------- the loop ---------- */
 
   async function run(s) {
@@ -528,7 +655,9 @@ function createAgent({ store, emit, getKey, ui }) {
     running.set(s.id, { ac, cut: null });
     emit({ t: "status", sid: s.id, running: true });
     const st = store.settings();
-    s._alt = 0; s._cur = null; let scouted = false; s._lengthRetries = 0; s._contRetries = 0;
+    s._alt = 0; s._cur = null; let scouted = false; s._lengthRetries = 0; s._contRetries = 0; s._verifyRounds = 0;
+    const runStart = Date.now();
+    if (s.kind === "code") s._repoMap = repoMap(s.cwd);
     const ownSrv = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
     if (ownSrv && isBad(s.model)) {   // it failed a moment ago: start on a working one instead of waiting for it to fail again
       const next = fallbackOrder(s)[0];
@@ -556,6 +685,7 @@ function createAgent({ store, emit, getKey, ui }) {
           try {
             res = await complete(s, ac.signal); if (!own) s._alt = 0;
             noteHealth(using, true, { ms: Date.now() - t0 });
+            router.record(using, { ok: true, ms: Date.now() - t0, cut: res.finish === "length", toolsOk: !res.toolCalls.some((tc) => { try { JSON.parse(tc.args || "{}"); return false; } catch { return true; } }) });
             if (route) showRoute("info", `أُكمل بـ ${using} بعد تعذّر ${trail.map((x) => x.model).join("، ")}`, { detail: route.detail, settled: true });
             break;
           }
@@ -577,7 +707,7 @@ function createAgent({ store, emit, getKey, ui }) {
             // the server itself is unreachable: every model would fail the same way, so don't blame (and blacklist) them
             const switchable = e.conn ? false : own ? (!st2 || st2 >= 500 || [401, 402, 403, 404, 408, 429].includes(st2) || /\[\d{3}\]/.test(e.message)) : (!st2 || st2 >= 500 || st2 === 408 || st2 === 429);
             const from = own ? s._cur || s.model : s.model, why = classify(e);
-            if (switchable) { trail.push({ model: from, reason: why.label, kind: why.kind, raw: String(e.message).slice(0, 4000) }); noteHealth(from, false, why); }
+            if (switchable) { trail.push({ model: from, reason: why.label, kind: why.kind, raw: String(e.message).slice(0, 4000) }); noteHealth(from, false, why); router.record(from, { ok: false, kind: why.kind }); }
             if (own && switchable) { tried.push(from); bad.set(from, Date.now() + why.ms); }
             const next = own ? fallbackOrder(s, tried)[0] : null;
             const limit = own ? 5 : 2;
@@ -649,7 +779,7 @@ function createAgent({ store, emit, getKey, ui }) {
         }
         s._lengthRetries = 0; s._contRetries = 0;
         s.messages.push(res.message);
-        if (!res.toolCalls.length) break;
+        if (!res.toolCalls.length) { if (await verifyGate(s, ac.signal, runStart)) continue; break; }
         emit({ t: "activity", sid: s.id, text: "ينفّذ الأدوات…" });
         const one = async (tc) => { if (ac.signal.aborted) return "Interrupted by the user before this tool ran."; try { return await execTool(s, tc, ac.signal); } catch (e) { return `Tool error: ${e.message}`; } };
         // Speed optimization: all read-only calls run concurrently in parallel, while write/exec tools run sequentially
@@ -721,7 +851,7 @@ function createAgent({ store, emit, getKey, ui }) {
     }
     s._seen = new Map(); s._fails = 0;
     if (/antillusion|انتي ?[اإ]?يلوجن|انتي ?ايلوشن|كودك|نفسك|طور نفسك|طوّر نفسك|self[- ]?(improve|modify)/i.test(String(rawText || ""))) s.selfDev = true;
-    s._blueprint = text && String(text).length > 8 && !/<starter_template/.test(body) && /(اعمل|ابن|انشئ|أنشئ|صمم|بدي|اريد|أريد|طور|برمج|سوي|build|create|make|implement|develop|write|add|design)/i.test(text) ? String(text) : null;
+    s._blueprint = s.kind !== "code" && text && String(text).length > 8 && !/<starter_template/.test(body) && /(اعمل|ابن|انشئ|أنشئ|صمم|بدي|اريد|أريد|طور|برمج|سوي|build|create|make|implement|develop|write|add|design)/i.test(text) ? String(text) : null;
     s.messages.push({ role: "user", content: parts.length ? [{ type: "text", text: body || "(see attached)" }, ...parts] : body });
     upsert(s, { id: uid(), kind: "user", text: String(rawText || ""), attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, thumb: a.kind === "image" ? a.dataUrl : undefined })), at: Date.now() });
     if (!s.titled && text) { s.title = String(text).replace(/[*_#>`|]+/g, "").replace(/^\s*[-•]?\s*(الهدف|Goal)\s*[:：/]?\s*/i, "").replace(/\s+/g, " ").trim().slice(0, 48) || "محادثة جديدة"; s.titled = true; emit({ t: "session", sid, meta: store.meta(s) }); }
@@ -809,7 +939,7 @@ function createAgent({ store, emit, getKey, ui }) {
     store.setSettings({ scout: { at: res.at, ok: res.ok.map((x) => ({ id: x.id, ms: x.ms })), bad: res.bad.slice(0, 80).map((x) => ({ id: x.id, reason: x.reason, code: x.code })) } });
     return store.settings().scout;
   }
-  return { send, stop, switchModel, healthReport, resetHealth, runScout, lastDiag: () => lastDiag, timeline, rewind, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
+  return { router, send, stop, switchModel, healthReport, resetHealth, runScout, lastDiag: () => lastDiag, timeline, rewind, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
 }
 
 module.exports = { createAgent, uid };

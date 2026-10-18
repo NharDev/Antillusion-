@@ -1,7 +1,7 @@
 {
   "name": "antillusion",
   "productName": "Antillusion",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Antillusion — a desktop AI coding agent: chat, tools, permissions, live preview tabs, worktrees, usage, starter templates and a built-in engineering library.",
   "main": "main.js",
   "author": "Adam",
@@ -11,7 +11,7 @@
     "start": "electron .",
     "test:core": "node test/core.test.js",
     "build": "node build/build.js",
-    "test:unit": "node test/tools.test.js && node test/skills.test.js && node test/omniquota.test.js && node test/updater.test.js && node test/delta.test.js && node test/own-server.test.js && node test/router-fallback.test.js && node test/router-robust.test.js && node test/scout.test.js && node test/length.test.js",
+    "test:unit": "node test/tools.test.js && node test/skills.test.js && node test/omniquota.test.js && node test/updater.test.js && node test/delta.test.js && node test/own-server.test.js && node test/router-fallback.test.js && node test/router-robust.test.js && node test/scout.test.js && node test/length.test.js && node test/code.test.js",
     "test": "npm run test:unit"
   },
   "devDependencies": {

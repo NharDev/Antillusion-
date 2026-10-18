@@ -358,7 +358,7 @@ const H = {
   "quick:ask": (text, mode) => quickAsk(text, mode),
   "quick:hide": () => { if (quick && !quick.isDestroyed()) quick.hide(); return true; },
   "quick:info": () => ({ key: quickKey, cwd: store.settings().lastCwd || app.getPath("home"), material: materialOn() }),
-  "router:health": () => ({ models: agent.healthReport(), diag: agent.lastDiag(), scout: store.settings().scout || null }),
+  "router:health": () => { const list = store.models().list; return { models: agent.healthReport(), diag: agent.lastDiag(), scout: store.settings().scout || null, ranking: { code: agent.router.rank(list, "code", { limit: 5 }), reason: agent.router.rank(list, "reason", { limit: 3 }), fast: agent.router.rank(list, "fast", { limit: 3 }) } }; },
   "router:scout": async () => { await ensureLocalRouter(); return agent.runScout((p) => send({ t: "scout-progress", ...p, last: undefined })); },
   "router:reset": () => { agent.resetHealth(); return true; },
   "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
@@ -467,6 +467,28 @@ const winBuild = () => (process.platform === "win32" ? +(require("os").release()
 const materialOn = () => store && store.settings().windowGlass === true && winBuild() >= 22621;   // opt-in: the default is a solid dark window
 const overlay = (theme) => (materialOn() ? { color: "#00000000", symbolColor: theme === "light" ? "#3a3d45" : "#c9ccd3", height: 40 } : theme === "light" ? { color: "#f4f4f6", symbolColor: "#4c4f57", height: 40 } : { color: "#0e0f11", symbolColor: "#a9adb6", height: 40 });
 
+/* ---------- verification: run a page in a hidden window and report what a user would hit ---------- */
+async function verifyPage(url) {
+  const w = new BrowserWindow({ show: false, width: 1280, height: 720, webPreferences: { offscreen: true, contextIsolation: true, sandbox: true, backgroundThrottling: false, spellcheck: false } });
+  const errors = [], noise = /favicon\.ico|DevTools|Autofill|third-party cookie|was preloaded using link preload/i;
+  w.webContents.on("console-message", (e, level, message) => { const lv = e && e.level !== undefined ? e.level : level, msg = e && e.message !== undefined ? e.message : message; if ((lv === "error" || lv === 3) && !noise.test(String(msg))) errors.push(String(msg).slice(0, 400)); });
+  w.webContents.on("did-fail-load", (e, code, desc, u) => { if (code !== -3) errors.push(`Failed to load ${u || url}: ${desc}`); });
+  w.webContents.on("render-process-gone", (e, d) => errors.push("The page crashed: " + (d && d.reason)));
+  w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  try {
+    await Promise.race([w.loadURL(url).catch((e) => errors.push("Failed to load: " + e.message)), new Promise((r) => setTimeout(r, 12000))]);
+    await new Promise((r) => setTimeout(r, 2800));   // let scripts, modules and the first frames run
+    const info = await w.webContents.executeJavaScript(`({ title: document.title, text: (document.body ? document.body.innerText : "").trim().length, nodes: document.body ? document.body.querySelectorAll("*").length : 0, canvas: !!document.querySelector("canvas") })`).catch(() => ({}));
+    let blank = false;
+    try {   // a screenshot where every sampled pixel is the same colour = nothing is drawn
+      const bmp = (await w.webContents.capturePage()).toBitmap(), seen = new Set();
+      for (let i = 0; i < bmp.length; i += 4 * 997) seen.add((bmp[i] >> 3) + "," + (bmp[i + 1] >> 3) + "," + (bmp[i + 2] >> 3));
+      blank = seen.size <= 2 && !info.text;
+    } catch {}
+    return { errors: [...new Set(errors)].slice(0, 20), blank, title: info.title || "" };
+  } finally { try { w.destroy(); } catch {} }
+}
+
 /* ---------- Quick Ask: a small glass window on a global shortcut, from any app ---------- */
 let quick = null, quickKey = "";
 function toggleQuick() {
@@ -533,6 +555,7 @@ app.whenReady().then(() => {
   agent = createAgent({
     store, emit: send, getKey,
     ui: {
+      verifyPage,
       openPreview: (p) => send({ t: "preview", ...p }),
       previewRead: (req) => new Promise((resolve) => {
         const reqId = uid(); const timer = setTimeout(() => { previewWaiters.delete(reqId); resolve({ error: "the preview did not answer in time (is the page still loading?)" }); }, 15000);

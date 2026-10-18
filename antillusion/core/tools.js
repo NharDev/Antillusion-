@@ -74,6 +74,14 @@ const DEFS = [
     parameters: P({ source: S("Source path"), destination: S("Destination path"), overwrite: B("Overwrite if destination exists") }, ["source", "destination"]) },
   { name: "copy_file", kind: "write", description: "Copy a file or directory inside the workspace.",
     parameters: P({ source: S("Source path"), destination: S("Destination path"), overwrite: B("Overwrite if destination exists") }, ["source", "destination"]) },
+  { name: "delegate", kind: "write", team: true, description: "Split a large build across a team of worker agents that run in parallel (Antillusion Code). Use it for work with 3+ separable parts (e.g. game engine, player & weapons, UI/HUD, levels, audio). Every task must own different files. Workers write their files and report back; you then integrate the parts and finish. Returns each worker's summary.",
+    parameters: { type: "object", properties: {
+      context: { type: "string", description: "What every worker must know: stack, architecture, file layout, the exact interfaces between files (exported names, function signatures, element ids, events), style and constraints." },
+      tasks: { type: "array", minItems: 2, maxItems: 4, items: { type: "object", properties: {
+        title: { type: "string", description: "Short name of the part." },
+        files: { type: "array", items: { type: "string" }, description: "Files this worker owns (creates or edits). No overlap with other tasks." },
+        instructions: { type: "string", description: "Exactly what to build in those files, including what they must expose to / use from the other files." } }, required: ["title", "files", "instructions"] } } },
+      required: ["context", "tasks"] } },
   { name: "project_read_source", kind: "read", description: "Read any source file from the Antillusion project itself (main.js, preload.js, core/agent.js, core/tools.js, ui/app.js, ui/index.html, etc.).",
     parameters: P({ path: S("Relative path inside Antillusion project, e.g. 'core/tools.js' or 'main.js'"), offset: N("1-based first line"), limit: N("Max lines") }, ["path"]) },
   { name: "project_list_files", kind: "read", description: "List all source files and structure of the Antillusion project.",
@@ -91,7 +99,7 @@ const BY_NAME = new Map(DEFS.map((d) => [d.name, d]));
 const shortDesc = (t) => { const m = String(t).match(/^[\s\S]*?[.!?](\s|$)/); return (m ? m[0] : String(t)).trim().slice(0, 160); };
 const stripParams = (p) => { if (!p || typeof p !== "object") return p; const o = Array.isArray(p) ? [] : {}; for (const k in p) { if (k === "description" && typeof p[k] === "string") continue; o[k] = typeof p[k] === "object" ? stripParams(p[k]) : p[k]; } return o; };
 const COMPACT_DROP = new Set(["sources_search", "pkg_info", "library_search", "copy_file", "move_file", "server_logs", "stop_server"]);
-const toolDefs = (readOnly, expert, opt = {}) => DEFS.filter((d) => (!readOnly || d.kind === "read") && (!d.expert || expert) && (opt.selfDev || !/^project_/.test(d.name)) && !(opt.compact && COMPACT_DROP.has(d.name)))
+const toolDefs = (readOnly, expert, opt = {}) => DEFS.filter((d) => (!readOnly || d.kind === "read") && (!d.expert || expert) && (opt.selfDev || !/^project_/.test(d.name)) && !(opt.compact && COMPACT_DROP.has(d.name)) && (!d.team || opt.team))
   .map((d) => ({ type: "function", function: { name: d.name, description: opt.compact ? shortDesc(d.description) : d.description, parameters: opt.compact ? stripParams(d.parameters) : d.parameters } }));
 const kindOf = (name) => (BY_NAME.get(name) || {}).kind;
 
@@ -337,6 +345,8 @@ async function syntaxCheck(fp, content) {
   const ext = path.extname(fp).toLowerCase();
   try {
     if (ext === ".json") { try { JSON.parse(content); return ""; } catch (e) { return e.message; } }
+    // ES-module syntax in a .js file: Node's --check auto-detects modules and then reports success even for broken code, so check it as .mjs
+    if (ext === ".js" && /^\s*(import\s[\s\S]*?from\s|import\s*["'{*]|export\s)/m.test(content)) return checkModuleSource(content, path.basename(fp));
     if (ext === ".js" || ext === ".mjs" || ext === ".cjs") return (await nodeCheck(fp)).split(fp).join(path.basename(fp));
     if (ext === ".html" || ext === ".htm") {
       const errs = [], re = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi; let m;
@@ -774,5 +784,5 @@ async function runTool(name, args, ctx) {
   catch (e) { return `Tool error (${name}): ${e.message}`; }
 }
 
-module.exports = { DEFS, toolDefs, kindOf, runTool, isDangerous, normCmd, shellSpec, runProc, resolveIn, isInside, walk, globRe,
+module.exports = { DEFS, toolDefs, kindOf, runTool, syntaxCheck, isDangerous, normCmd, shellSpec, runProc, resolveIn, isInside, walk, globRe,
   serverList, serverLogs, stopServer, stopAllServers, onServersChanged };

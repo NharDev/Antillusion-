@@ -1,5 +1,6 @@
 /* Antillusion — persistence: settings, sessions, usage log and the cached model list, all plain JSON under one folder. */
 "use strict";
+const AUTO_INFO = { id: "antillusion/auto", name: "Antillusion Auto", context_length: 131072, pricing: { prompt: "0", completion: "0" }, architecture: { input_modalities: ["text", "image"] }, supported_parameters: ["tools"], top_provider: {}, local: true, virtual: true };
 
 const fs = require("fs");
 const path = require("path");
@@ -24,7 +25,7 @@ function createStore(dir) {
   const sessions = new Map();
   let usageTimer = null;
 
-  const meta = (s) => ({ id: s.id, title: s.title, cwd: s.cwd, baseCwd: s.baseCwd, worktree: s.worktree, model: s.model, mode: s.mode, perm: s.perm, effort: s.effort, rating: s.rating || null, created: s.created, updated: s.updated, usage: s.usage, ctx: s.ctx, todos: s.todos });
+  const meta = (s) => ({ id: s.id, kind: s.kind || "chat", title: s.title, cwd: s.cwd, baseCwd: s.baseCwd, worktree: s.worktree, model: s.model, mode: s.mode, perm: s.perm, effort: s.effort, rating: s.rating || null, created: s.created, updated: s.updated, usage: s.usage, ctx: s.ctx, todos: s.todos });
 
   return {
     dir, meta,
@@ -32,9 +33,10 @@ function createStore(dir) {
     settings: () => settings,
     setSettings(patch) { settings = { ...settings, ...patch }; writeJson(path.join(dir, "settings.json"), settings); return settings; },
 
-    models: () => models,
+    // "Antillusion Auto" is a virtual model: the smart router picks a real one per task
+    models: () => (models.list.length ? { ...models, list: [AUTO_INFO, ...models.list.filter((m) => m.id !== AUTO_INFO.id)] } : models),
     setModels(list) { models = { at: Date.now(), list }; writeJson(path.join(dir, "models.json"), models); },
-    modelInfo: (id) => models.list.find((m) => m.id === id),
+    modelInfo: (id) => (id === AUTO_INFO.id ? AUTO_INFO : models.list.find((m) => m.id === id)),
 
     listSessions() {
       const out = [];
@@ -53,12 +55,12 @@ function createStore(dir) {
     },
     createSession(init = {}) {
       const cwd = init.cwd || settings.lastCwd || require("os").homedir();
-      const s = { id: uid(), title: "محادثة جديدة", titled: false, cwd, baseCwd: cwd, worktree: null, model: init.model || settings.model, mode: init.mode || settings.mode, perm: init.perm || settings.perm, effort: init.effort || settings.effort,
+      const s = { id: uid(), kind: init.kind === "code" ? "code" : "chat", title: init.kind === "code" ? "Antillusion Code" : "محادثة جديدة", titled: false, cwd, baseCwd: cwd, worktree: null, model: init.model || settings.model, mode: init.mode || settings.mode, perm: init.perm || settings.perm, effort: init.effort || settings.effort,
         messages: [], log: [], todos: [], checkpoints: {}, allow: { tools: [], cmds: [] }, usage: { prompt: 0, completion: 0, cached: 0, cost: 0, requests: 0 }, ctx: { used: 0, max: 0 }, created: Date.now(), updated: Date.now() };
       sessions.set(s.id, s); this.saveSession(s); return s;
     },
     saveSession(s) {
-      const { allow, _seen, _fails, _blueprint, _alt, _cur, _chunkHint, _noExpert, _lite, _boost, _lengthRetries, _contRetries, ...rest } = s;
+      const { allow, _seen, _fails, _blueprint, _alt, _cur, _chunkHint, _noExpert, _lite, _boost, _lengthRetries, _contRetries, _verifyRounds, _repoMap, ...rest } = s;
       // checkpoints can be large; keep only the newest 40 on disk
       const keys = Object.keys(rest.checkpoints || {});
       if (keys.length > 40) { rest.checkpoints = Object.fromEntries(keys.slice(-40).map((k) => [k, s.checkpoints[k]])); s.checkpoints = rest.checkpoints; }
