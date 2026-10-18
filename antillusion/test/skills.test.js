@@ -4,7 +4,7 @@ const skills = require("../core/skills");
 const library = require("../core/library");
 
 const all = skills.list();
-assert.ok(all.length >= 8, "built-in skills are missing");
+assert.ok(all.length >= 11, "built-in skills are missing");
 const cards = new Set(library.list().cards.map((c) => c.id)), templates = new Set(library.templates().map((t) => t.name));
 for (const sk of all) {
   assert.ok(sk.title && sk.command && sk.triggers.length, `skill ${sk.name} needs title, command and triggers`);
@@ -25,6 +25,11 @@ assert.strictEqual(m("write a story about a dragon"), "story-cinematic");
 assert.strictEqual(m("ابني لعبة منصات"), "game-dev");
 assert.strictEqual(m("أريد تصميم صفحة هبوط جميلة"), "ui-design");
 assert.strictEqual(m("التطبيق لا يعمل ويظهر خطأ"), "fix");
+assert.strictEqual(m("صمم لي هوية بصرية وشعار لشركتي"), "brand-identity");
+assert.strictEqual(m("design a logo for my startup"), "brand-identity");
+assert.strictEqual(m("صمم لي شخصية كرتونية ثلاثية الابعاد"), "character-design");
+assert.strictEqual(m("make a walk cycle animation for my hero"), "animation");
+assert.strictEqual(m("اعمل لعبة تشتغل على يد اكس بوكس وبلايستيشن"), "game-dev");
 assert.strictEqual(m("راجع الكود وابحث عن اخطاء"), "review");
 // ordinary requests must not trigger anything
 for (const q of ["add error handling to the api", "hello", "اشرح لي ما هو الـ closure", "rename the variable foo to bar", "اضف زر حفظ للنموذج"]) assert.strictEqual(m(q), null, "false positive: " + q);

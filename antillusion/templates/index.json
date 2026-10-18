@@ -62,5 +62,37 @@
     "run": "serve_static (or open_preview index.html). Export buttons are in the page; MP4 with sound: `node render.mjs` (needs playwright + ffmpeg).",
     "notes": "Edit ONLY scenes.js: CONFIG (size/fps/duration/palette/font/rtl) → M.scene(start, end, (ctx, s) => …, { in/out transitions }) → M.sfx / M.music. s = {t, p, dur, T, w, h}. Helpers: Motion.fx (bg, text, bars, donut, lineChart, particles, device, counter, ring, line, path), Motion.cam, Motion.ease, Cine (letterbox, subtitle, dialogue, title, sky, skyline, silhouette, grade, grain, vignette, flash, fade; set Cine.ratio=2.39 when using letterbox). scenes-cinematic.js is a complete 17 s short film (open index.html?demo=cinematic) — copy it over scenes.js to start from a story. Verify frames with video.renderFrame(t) in preview_read. Never animate Arabic per letter (use unit:'word', rtl:true).",
     "strong": "موشن جرافيك motion graphics فيديو انترو cinematic سينمائي"
+  },
+  {
+    "name": "game-input",
+    "title": "Universal game input library (no dependencies): one action map for keyboard, mouse, every gamepad (Xbox, PlayStation, Switch, Steam, generic) and touch — deadzones, triggers, rumble, controller detection, platform-correct button glyphs (SVG), confirm/back convention, rebinding saved to localStorage, hot-plug + disconnect events; demo Input Lab page",
+    "tags": "gamepad controller joystick xbox playstation ps4 ps5 dualsense dualshock switch nintendo steam deck input keyboard mouse touch mobile controls rebind remap rumble vibration glyphs buttons cross platform تحكم يد يد تحكم جهاز اكس بوكس بلايستيشن سويتش ازرار لمس هزاز ربط منصات كل المنصات",
+    "run": "serve_static or open_preview index.html (classic scripts). Copy input.js into any web/Electron game.",
+    "notes": "API is documented at the top of input.js: GameInput.create({ actions, storageKey }) → input.update(dt) every frame, then input.vec('move'), input.pressed/down/released('jump'), input.buffered('jump', 0.12), input.value('aim') for analog triggers, input.device (keyboard|xbox|playstation|switch|steam|generic|touch), input.glyph('jump') SVG prompt for the current device, input.rumble(strong, weak, ms), await input.rebind(action, slot). Built-in ui_confirm/ui_back/ui_up… follow platform conventions (Switch confirms with east). Pause the game on input.on('disconnect'). Debug: window.lab.input.",
+    "strong": "gamepad controller xbox playstation dualsense يد تحكم اكس بوكس بلايستيشن"
+  },
+  {
+    "name": "character-2d",
+    "title": "Rigged 2D vector character on canvas (no dependencies, not a stick figure): bone hierarchy, tapered organic shapes, cel shading + outlines, face rig (blinks, gaze, brows, 6 expressions, lip-sync visemes from text), springs for scarf/hair, clips idle/walk/run/jump/wave/punch with cross-fades, palettes, sprite-sheet export",
+    "tags": "character 2d cartoon rig rigged skeletal animation animator walk cycle run jump expression face lip sync sprite sheet canvas vector mascot hero player شخصيه شخصيات كرتون ثنائيه ابعاد تحريك انميشن انيميشن مشي ركض قفز تعابير وجه رسوم متحركه سبرايت",
+    "run": "serve_static or open_preview index.html (classic scripts).",
+    "notes": "All in character.js (API at the top). Restyle via PALETTES (skin, hair, eyes, top, top2, pants, shoes, accent, outline) and the part path functions (torsoPath, headPath, limb widths). New clip: add to Character2D.CLIPS — smooth 8-key cycles (like walk) or keyed tracks [[t, deg, ease]] (like jump/punch); sign conventions are in the header comment. hero.spriteSheet(clip, frames, cell) exports frames for game engines. Debug: window.studio.hero.",
+    "strong": "شخصيه شخصيات character rig انميشن animation"
+  },
+  {
+    "name": "character-3d",
+    "title": "Stylised 3D character in three.js built as ONE skinned mesh on a humanoid skeleton (Mixamo-like bone names): smooth joint weights, toon (with outline) or PBR look, face with blinking eyes, gaze, brows and expressions, AnimationClips idle/walk/run/jump/wave/punch/dance, speed-driven blend tree, third-person WASD controller, optional glTF loader (?model=file.glb) for Mixamo/VRoid/Blender characters",
+    "tags": "3d character threejs three.js skinned mesh skeleton rig bones humanoid mixamo gltf glb animation mixer blend tree third person controller avatar toon cel shading outline player model شخصيه شخصيات ثلاثيه ابعاد مجسم تحريك انميشن هيكل عظمي لاعب افاتار",
+    "run": "serve_static (ES modules + three.js from unpkg; needs internet). Entry: index.html",
+    "notes": "character3d.js: createCharacter({ palette, style }) → { root, play(name|null), setSpeed(m/s), expression(name), lookAt(vec3), update(dt), clips, bones }. Proportions/outfit: the parts list (lathe torso profile, limb radii, hair cones). New clip: add to POSES (degrees per bone, X swing negative = forward, like the 2D rig); it becomes a THREE.AnimationClip automatically. Real assets: load a rigged .glb with ?model= or GLTFLoader + AnimationMixer. Debug: window.char3d.hero.",
+    "strong": "3d character شخصيه ثلاثيه mixamo avatar"
+  },
+  {
+    "name": "brand-kit",
+    "title": "Brand identity generator & guidelines page (no dependencies): geometric logo mark on a 48-unit grid + wordmark, OKLCH colour ramps (brand/accent/neutral/semantic) with WCAG contrast table, type scale with pairings (incl. Arabic), applications (business card, app icon, social card), do/don't rules, CSS + JSON token export, SVG logo download",
+    "tags": "brand branding identity visual identity logo logotype wordmark mark colour palette color system typography guidelines style guide tokens business card app icon هويه بصريه شعار لوجو علامه تجاريه الوان خطوط دليل الهويه براند تصميم هويه بطاقه عمل",
+    "run": "open_preview index.html (or serve_static).",
+    "notes": "Edit CONFIG at the top of brand.js (name, tagline, hue, chroma, accentOffset, mark: arc|facet|stack|monogram, pair, contact). Add a mark: a function in MARKS returning SVG drawn on a 48×48 grid with 2–3 tones. Ramps come from ramp(hue, chroma) in OKLCH with gamut mapping; keep body text pairs ≥ 4.5:1 (the table checks). Debug: window.brand.",
+    "strong": "هويه بصريه branding brand identity logo شعار لوجو"
   }
 ]

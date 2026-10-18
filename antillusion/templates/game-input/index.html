@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Input Lab</title>
+<style>
+  :root { --bg: #0e1013; --panel: #15181d; --line: #252a31; --text: #e9ecef; --muted: #8b939c; --accent: #4fd1a5; --hot: #f2f4f7; --mono: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 16px 22px; border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: .01em; }
+  .dev { display: inline-flex; align-items: center; gap: 8px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 6px; font: 12px var(--mono); color: var(--muted); }
+  .dev i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+  header .sp { flex: 1; }
+  main { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); gap: 1px; background: var(--line); min-height: calc(100vh - 57px); }
+  section { background: var(--bg); padding: 20px 22px; min-width: 0; }
+  h2 { margin: 0 0 12px; font-size: 11px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+  canvas { width: 100%; aspect-ratio: 16 / 9; display: block; background: #12151a; border: 1px solid var(--line); border-radius: 8px; }
+  .prompts { display: flex; flex-wrap: wrap; gap: 18px; margin: 12px 0 22px; color: var(--muted); font-size: 13px; }
+  .prompts span { display: inline-flex; align-items: center; gap: 7px; }
+  .prompts svg { display: block; }
+  #pad { width: 100%; max-width: 520px; display: block; margin: 0 auto; }
+  #pad .k { fill: #1d2127; stroke: #3a414b; stroke-width: 1.5; transition: fill .06s; }
+  #pad .k.on { fill: var(--hot); }
+  #pad text { font: 700 11px system-ui, sans-serif; fill: var(--text); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+  #pad .k.on + text { fill: #111; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 9px 0; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  td.n { font: 12.5px var(--mono); color: var(--text); width: 30%; }
+  td.b { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  td.v { width: 64px; text-align: right; font: 12px var(--mono); color: var(--muted); }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 3px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); font-size: 12px; color: var(--muted); cursor: pointer; }
+  .chip:hover { border-color: #3a414b; color: var(--text); }
+  .chip.wait { border-color: var(--accent); color: var(--accent); }
+  .chip svg { display: block; }
+  tr.on td.n { color: var(--accent); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  button { font: inherit; font-size: 13px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+  button:hover { border-color: #3a414b; }
+  label.sl { display: grid; grid-template-columns: 120px 1fr 44px; gap: 10px; align-items: center; margin-top: 12px; color: var(--muted); font-size: 12.5px; }
+  input[type=range] { accent-color: var(--accent); }
+  .pads { font: 12px var(--mono); color: var(--muted); margin-top: 6px; min-height: 18px; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--panel); border: 1px solid var(--line); padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header><h1>Input Lab</h1><span class="dev"><i></i><span id="dev">keyboard</span></span><span class="sp"></span><span class="pads" id="pads">No controller — press any button on one to connect</span></header>
+<main>
+  <section>
+    <h2>Playground</h2>
+    <canvas id="game" width="960" height="540"></canvas>
+    <div class="prompts" id="prompts"></div>
+    <h2>Controller</h2>
+    <svg id="pad" viewBox="0 0 520 300" aria-label="Controller state"></svg>
+  </section>
+  <section>
+    <h2>Actions — click a binding to remap</h2>
+    <table id="acts"></table>
+    <div class="row">
+      <button id="rumble">Test rumble</button>
+      <button id="reset">Reset bindings</button>
+      <button id="touch">Show touch controls</button>
+    </div>
+    <label class="sl">Stick deadzone <input id="dz" type="range" min="0" max="0.4" step="0.01" value="0.16"><span id="dzv">0.16</span></label>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script src="input.js"></script>
+<script>
+// A tiny arena that uses every kind of action, plus a live view of the controller and the bindings.
+const input = GameInput.create({
+  actions: {
+    move:   { axis: ["wasd", "arrows", "lstick", "dpad", "touchstick"] },
+    jump:   ["Space", "pad:south", "touch:A"],
+    dash:   ["ShiftLeft", "mouse:2", "pad:rb", "touch:B"],
+    attack: ["KeyJ", "mouse:0", "pad:west"],
+    charge: ["KeyK", "pad:rt"],
+    pause:  ["Escape", "pad:start"],
+  },
+  storageKey: "inputlab.bindings",
+});
+const $ = (id) => document.getElementById(id);
+const toast = (t) => { const e = $("toast"); e.textContent = t; e.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("show"), 1600); };
+
+/* ---------- arena ---------- */
+const cv = $("game"), g = cv.getContext("2d"), W = cv.width, H = cv.height, FLOOR = H - 70;
+const P = { x: W / 2, y: FLOOR, vx: 0, vy: 0, face: 1, ground: true, dash: 0, swing: 0, charge: 0, squash: 1 };
+let paused = false, shake = 0;
+function step(dt) {
+  if (input.pressed("pause")) { paused = !paused; toast(paused ? "Paused" : "Resumed"); }
+  if (paused) return;
+  const mv = input.vec("move");
+  const target = mv.x * 330;
+  P.vx += (target - P.vx) * (1 - Math.exp(-(P.ground ? 14 : 6) * dt));
+  if (Math.abs(mv.x) > 0.2) P.face = Math.sign(mv.x);
+  if (P.ground && input.buffered("jump", 0.12)) { P.vy = -720; P.ground = false; P.squash = 0.75; }
+  if (!input.down("jump") && P.vy < 0) P.vy += 2600 * dt;   // short hop when released early
+  if (input.pressed("dash") && P.dash <= 0) { P.dash = 0.16; P.vx = P.face * 900; input.rumble(0.2, 0.5, 90); }
+  if (input.pressed("attack")) { P.swing = 0.18; input.rumble(0.5, 0.2, 70); shake = 0.25; }
+  P.charge = input.value("charge");
+  if (input.released("charge") && P.charge === 0) { shake = 0.5; input.rumble(1, 0.6, 160); }
+  P.dash = Math.max(0, P.dash - dt); P.swing = Math.max(0, P.swing - dt);
+  P.vy += 1900 * dt; P.x += P.vx * dt; P.y += P.vy * dt;
+  if (P.y >= FLOOR) { if (!P.ground) { P.squash = 1.3; input.rumble(0.15, 0.1, 50); } P.y = FLOOR; P.vy = 0; P.ground = true; }
+  P.x = Math.max(30, Math.min(W - 30, P.x));
+  P.squash += (1 - P.squash) * Math.min(1, dt * 14); shake = Math.max(0, shake - dt * 1.8);
+}
+function draw() {
+  g.save(); g.clearRect(0, 0, W, H);
+  if (shake) g.translate((Math.random() - 0.5) * 18 * shake * shake, (Math.random() - 0.5) * 18 * shake * shake);
+  g.fillStyle = "#171b21"; g.fillRect(0, FLOOR + 22, W, H);
+  g.strokeStyle = "#252a31"; g.lineWidth = 1; for (let x = 0; x < W; x += 48) { g.beginPath(); g.moveTo(x, FLOOR + 22); g.lineTo(x - 60, H); g.stroke(); }
+  g.fillStyle = "#0008"; g.beginPath(); g.ellipse(P.x, FLOOR + 22, 26 * (1 - (FLOOR - P.y) / 500), 6, 0, 0, 7); g.fill();
+  g.translate(P.x, P.y + 22); g.scale(P.face / P.squash ** 0.5, P.squash);
+  // body: a rounded capsule with a visor, not a box
+  g.fillStyle = P.dash > 0 ? "#f2f4f7" : "#4fd1a5"; g.beginPath(); g.roundRect(-20, -62, 40, 62, 18); g.fill();
+  g.fillStyle = "#0e1013"; g.beginPath(); g.roundRect(-2, -50, 22, 12, 6); g.fill();
+  g.fillStyle = "#e9ecef"; g.fillRect(10, -47, 6, 6);
+  if (P.swing > 0) { const a = (1 - P.swing / 0.18) * Math.PI; g.strokeStyle = "#f2f4f7"; g.lineWidth = 5; g.lineCap = "round"; g.beginPath(); g.arc(8, -32, 46, -Math.PI / 2 - 0.9 + a * 0.8, -Math.PI / 2 + a * 0.8); g.stroke(); }
+  if (P.charge > 0) { g.strokeStyle = "#f2f4f7"; g.lineWidth = 3; g.beginPath(); g.arc(0, -31, 40, -Math.PI / 2, -Math.PI / 2 + P.charge * Math.PI * 2); g.stroke(); }
+  g.restore();
+  if (paused) { g.fillStyle = "#000a"; g.fillRect(0, 0, W, H); g.fillStyle = "#e9ecef"; g.font = "600 28px system-ui"; g.textAlign = "center"; g.fillText("Paused", W / 2, H / 2); }
+}
+
+/* ---------- prompts follow the device you touched last ---------- */
+const PROMPTS = [["move", "Move"], ["jump", "Jump"], ["dash", "Dash"], ["attack", "Attack"], ["charge", "Charge"], ["pause", "Pause"]];
+function drawPrompts() { $("prompts").innerHTML = PROMPTS.map(([a, t]) => `<span>${input.glyph(a, 24)}${t}</span>`).join(""); }
+
+/* ---------- controller diagram ---------- */
+const PAD = [
+  ["lt", 98, 22, 64, 24, 8], ["rt", 358, 22, 64, 24, 8], ["lb", 92, 54, 76, 18, 9], ["rb", 352, 54, 76, 18, 9],
+  ["up", 120, 120, 22, 24, 4], ["down", 120, 166, 22, 24, 4], ["left", 97, 143, 24, 22, 4], ["right", 141, 143, 24, 22, 4],
+  ["north", 392, 112, 30, 30, 15], ["south", 392, 172, 30, 30, 15], ["west", 362, 142, 30, 30, 15], ["east", 422, 142, 30, 30, 15],
+  ["select", 220, 128, 26, 16, 8], ["start", 274, 128, 26, 16, 8], ["home", 247, 162, 26, 26, 13],
+];
+function buildPad() {
+  const s = $("pad");
+  s.innerHTML = `<path d="M150 70h220c46 0 70 30 84 80l26 92c8 30-14 50-38 40l-54-24c-16-8-26-22-40-22H172c-14 0-24 14-40 22l-54 24c-24 10-46-10-38-40l26-92c14-50 38-80 84-80z" fill="#15181d" stroke="#252a31" stroke-width="2"/>` +
+    PAD.map(([n, x, y, w, h, r]) => `<rect class="k" id="k-${n}" x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}"/><text x="${x + w / 2}" y="${y + h / 2}" id="t-${n}"></text>`).join("") +
+    `<circle cx="190" cy="206" r="30" class="k" id="k-ls"/><circle cx="190" cy="206" r="16" fill="#2a3038" id="ls"/><circle cx="330" cy="206" r="30" class="k" id="k-rs"/><circle cx="330" cy="206" r="16" fill="#2a3038" id="rs"/>`;
+}
+const SHORT = { playstation: { south: "✕", east: "○", west: "□", north: "△", select: "▭", start: "≡" }, xbox: { select: "⧉", start: "≡" }, generic: { select: "⧉", start: "≡" }, steam: { select: "⧉", start: "≡" }, switch: { select: "−", start: "+" } };
+function labelPad(fam) { for (const [n] of PAD) { const t = $("t-" + n); if (t) t.textContent = ["up", "down", "left", "right"].includes(n) ? "" : ((SHORT[fam] || {})[n] || (GameInput.NAMES[fam] || GameInput.NAMES.generic)[n] || ""); } }
+function drawPad() {
+  const p = input.pads[0]; if (!p) return;
+  for (const [n] of PAD) $("k-" + n).classList.toggle("on", p.buttons[n] > (n === "lt" || n === "rt" ? 0.05 : 0.5));
+  $("k-ls").classList.toggle("on", p.buttons.ls > 0.5); $("k-rs").classList.toggle("on", p.buttons.rs > 0.5);
+  $("ls").setAttribute("transform", `translate(${p.ls.x * 14} ${p.ls.y * 14})`); $("rs").setAttribute("transform", `translate(${p.rs.x * 14} ${p.rs.y * 14})`);
+}
+
+/* ---------- action table with remapping ---------- */
+function drawActions() {
+  const acts = input.actions, dev = input.device, fam = ["keyboard", "touch"].includes(dev) ? "xbox" : dev;
+  $("acts").innerHTML = Object.entries(acts).map(([name, a]) => {
+    const list = Array.isArray(a) ? a : a.axis;
+    return `<tr data-a="${name}"><td class="n">${name}</td><td class="b">${list.map((b, i) => `<span class="chip" data-a="${name}" data-i="${i}" title="${GameInput.label(b, fam)}">${GameInput.glyphSVG(b, fam, 20)}${GameInput.label(b, fam)}</span>`).join("")}${Array.isArray(a) ? `<span class="chip" data-a="${name}" data-i="${list.length}">+ add</span>` : ""}</td><td class="v" id="v-${name}"></td></tr>`;
+  }).join("");
+}
+$("acts").addEventListener("click", async (e) => {
+  const c = e.target.closest(".chip"); if (!c || input.rebinding) return;
+  if (!Array.isArray(input.actions[c.dataset.a])) return toast("Axis bindings are set in code");
+  c.classList.add("wait"); c.lastChild.textContent = "press a key or button…";
+  const b = await input.rebind(c.dataset.a, +c.dataset.i);
+  toast(b ? `${c.dataset.a} → ${GameInput.label(b, input.device === "keyboard" ? "xbox" : input.device)}` : "Cancelled");
+  drawActions();
+});
+$("rumble").onclick = () => { input.rumble(1, 0.7, 400); toast(input.pads.length ? "Rumble sent" : "Connect a controller to feel it"); };
+$("reset").onclick = () => { input.resetBindings(); drawActions(); drawPrompts(); toast("Bindings reset"); };
+$("touch").onclick = () => input.showTouch();
+$("dz").oninput = (e) => { $("dzv").textContent = (+e.target.value).toFixed(2); input.configure({ deadzone: +e.target.value }); };
+
+input.on("device", (d) => { $("dev").textContent = d; labelPad(["keyboard", "touch"].includes(d) ? "xbox" : d); drawPrompts(); drawActions(); });
+input.on("connect", (p) => { toast(`${p.family} controller connected`); refreshPads(); });
+input.on("disconnect", (p) => { paused = true; toast("Controller disconnected — paused"); refreshPads(); });
+function refreshPads() { const l = input.pads; $("pads").textContent = l.length ? l.map((p) => `#${p.index} ${p.family} — ${p.id.slice(0, 48)}`).join("   ") : "No controller — press any button on one to connect"; }
+
+buildPad(); labelPad("xbox"); drawPrompts(); drawActions();
+let last = performance.now(), acc = 0;
+(function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  input.update(dt); step(dt); draw(); drawPad();
+  if ((acc += dt) > 0.1) { acc = 0; refreshPads(); for (const n of Object.keys(input.actions)) { const el = $("v-" + n); if (!el) continue; const v = input.vec(n), on = input.down(n); el.textContent = Array.isArray(input.actions[n]) ? input.value(n).toFixed(2) : `${v.x.toFixed(1)},${v.y.toFixed(1)}`; el.parentNode.classList.toggle("on", on); } }
+  requestAnimationFrame(frame);
+})(last);
+window.lab = { input, player: P };
+</script>
+</body>
+</html>

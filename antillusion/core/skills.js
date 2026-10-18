@@ -52,7 +52,7 @@ function loadAll(extraDirs = []) {
   return [...byName.values()];
 }
 
-const ORDER = ["motion-video", "story-cinematic", "game-dev", "project-builder", "ui-design", "spec", "review", "fix"];
+const ORDER = ["motion-video", "story-cinematic", "game-dev", "character-design", "animation", "brand-identity", "project-builder", "ui-design", "spec", "review", "fix"];
 const rank = (n) => { const i = ORDER.indexOf(n); return i < 0 ? 99 : i; };
 const list = (extraDirs) => loadAll(extraDirs).sort((a, b) => rank(a.name) - rank(b.name) || a.name.localeCompare(b.name)).map(({ body, ...rest }) => ({ ...rest, size: body.length }));
 const get = (name, extraDirs) => loadAll(extraDirs).find((s) => s.name === String(name).toLowerCase()) || null;

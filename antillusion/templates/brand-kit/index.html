@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brand Guidelines</title>
+<style>
+  /* The page itself is neutral; every brand colour on it comes from the generated tokens (--b-*). */
+  :root { --paper: #f6f5f2; --ink: #17171a; --ink-2: #5b5a57; --rule: #e2e0db; --card: #ffffff; --mono: ui-monospace, "Cascadia Code", Consolas, monospace; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.55 system-ui, "Segoe UI", sans-serif; }
+  .layout { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; }
+  aside { position: sticky; top: 0; height: 100vh; overflow: auto; border-inline-end: 1px solid var(--rule); padding: 22px 20px; background: #fbfaf8; }
+  aside h1 { font-size: 14px; margin: 0 0 18px; letter-spacing: .02em; }
+  .f { display: grid; gap: 5px; margin-bottom: 14px; font-size: 12px; color: var(--ink-2); }
+  .f input[type=text], .f select { font: inherit; font-size: 14px; color: var(--ink); background: #fff; border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; }
+  .f input[type=range] { accent-color: var(--ink); }
+  .seg { display: flex; gap: 4px; flex-wrap: wrap; } .seg button { flex: 1; font: inherit; font-size: 12.5px; padding: 6px; border: 1px solid var(--rule); background: #fff; border-radius: 6px; cursor: pointer; text-transform: capitalize; } .seg button.on { border-color: var(--ink); }
+  .btns { display: grid; gap: 6px; margin-top: 20px; } .btns button { font: inherit; font-size: 13px; padding: 8px; border-radius: 6px; border: 1px solid var(--ink); background: var(--ink); color: #fff; cursor: pointer; } .btns button.ghost { background: transparent; color: var(--ink); }
+  main { padding: 48px clamp(20px, 5vw, 72px) 96px; max-width: 1180px; }
+  section { padding: 40px 0; border-top: 1px solid var(--rule); }
+  .eyebrow { font: 600 11px var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-2); margin-bottom: 18px; display: flex; gap: 14px; } .eyebrow span:first-child { color: var(--ink); }
+  h2 { font-size: 28px; line-height: 1.15; margin: 0 0 10px; letter-spacing: -.01em; font-family: var(--b-display); }
+  p.lead { color: var(--ink-2); max-width: 62ch; margin: 0 0 26px; }
+  .cover { min-height: 62vh; border-radius: 4px; background: var(--b-900); color: var(--b-50); display: grid; align-content: space-between; padding: clamp(24px, 4vw, 56px); position: relative; overflow: hidden; }
+  .cover .big { font-family: var(--b-display); font-size: clamp(44px, 8vw, 104px); line-height: .95; letter-spacing: -.03em; font-weight: 700; margin: 0; }
+  .cover .tag { font-size: clamp(16px, 2vw, 22px); color: var(--b-200); max-width: 32ch; }
+  .cover .meta { display: flex; justify-content: space-between; font: 12px var(--mono); color: var(--b-300); }
+  .cover .pattern { position: absolute; inset-inline-end: -6%; bottom: -14%; width: 56%; opacity: .14; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .tile { background: var(--card); border: 1px solid var(--rule); border-radius: 4px; padding: 28px; display: grid; place-items: center; min-height: 220px; position: relative; }
+  .tile.dark { background: var(--b-900); border-color: transparent; } .tile.brand { background: var(--b-500); border-color: transparent; }
+  .tile small { position: absolute; left: 14px; bottom: 10px; font: 11px var(--mono); color: var(--ink-2); } .tile.dark small, .tile.brand small { color: rgba(255,255,255,.6); }
+  .construct { background-image: linear-gradient(var(--rule) 1px, transparent 1px), linear-gradient(90deg, var(--rule) 1px, transparent 1px); background-size: 20px 20px; }
+  .sizes { display: flex; align-items: flex-end; gap: 28px; } .sizes div { display: grid; justify-items: center; gap: 8px; font: 11px var(--mono); color: var(--ink-2); }
+  .ramp { display: grid; grid-template-columns: repeat(11, 1fr); border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
+  .ramp div { height: 76px; padding: 8px; font: 10.5px var(--mono); display: flex; flex-direction: column; justify-content: flex-end; }
+  .rname { font: 600 12px var(--mono); margin: 18px 0 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; } th, td { text-align: start; padding: 10px 8px; border-bottom: 1px solid var(--rule); } th { font: 600 11px var(--mono); color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; }
+  .sample { display: inline-block; padding: 6px 12px; border-radius: 4px; font-weight: 600; }
+  .ok { color: #1f7a4d; font: 600 12px var(--mono); } .no { color: #a63b2a; font: 600 12px var(--mono); }
+  .type-row { display: grid; grid-template-columns: 150px 1fr; gap: 18px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--rule); } .type-row code { font: 11px var(--mono); color: var(--ink-2); }
+  .mock { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+  .card-front, .card-back { aspect-ratio: 85 / 55; border-radius: 6px; padding: 22px; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 1px 2px rgba(0,0,0,.06), 0 12px 32px -12px rgba(0,0,0,.25); }
+  .card-front { background: var(--b-900); color: var(--b-50); } .card-back { background: #fff; color: var(--ink); }
+  .card-back b { font-family: var(--b-display); font-size: 17px; } .card-back span { font-size: 12px; color: var(--ink-2); } .card-back .c { font: 11.5px/1.7 var(--mono); }
+  .appicon { display: flex; gap: 22px; align-items: flex-end; justify-content: center; }
+  .squircle { border-radius: 22.5%; background: var(--b-500); display: grid; place-items: center; box-shadow: 0 10px 24px -10px rgba(0,0,0,.4); }
+  .social { min-height: 200px; gap: 14px; border-radius: 6px; background: var(--b-50); padding: 28px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid var(--rule); }
+  .social h3 { font-family: var(--b-display); font-size: 26px; line-height: 1.05; margin: 0; color: var(--b-900); letter-spacing: -.02em; max-width: 14ch; }
+  .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .rule { border: 1px solid var(--rule); border-radius: 4px; background: #fff; } .rule .v { height: 140px; display: grid; place-items: center; border-bottom: 1px solid var(--rule); } .rule p { margin: 0; padding: 10px 12px; font-size: 13px; }
+  .rule p b { font: 600 11px var(--mono); margin-inline-end: 6px; } .rule.do p b { color: #1f7a4d; } .rule.dont p b { color: #a63b2a; }
+  pre { background: #1b1b1e; color: #e8e6e1; padding: 18px; border-radius: 4px; font: 12px/1.6 var(--mono); overflow: auto; max-height: 360px; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } aside { position: static; height: auto; } }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside>
+    <h1>Brand kit</h1>
+    <label class="f">Name<input type="text" id="name" value="Northwind"></label>
+    <label class="f">Tagline<input type="text" id="tagline" value="Logistics that keeps its promises."></label>
+    <div class="f">Mark<div class="seg" id="marks"></div></div>
+    <label class="f">Brand hue <input type="range" id="hue" min="0" max="360" value="168"></label>
+    <label class="f">Chroma <input type="range" id="chroma" min="0.04" max="0.2" step="0.005" value="0.11"></label>
+    <label class="f">Accent hue (offset) <input type="range" id="acc" min="0" max="360" value="230"></label>
+    <label class="f">Type pairing<select id="pair"></select></label>
+    <div class="btns"><button id="dlLogo">Download logo SVG</button><button class="ghost" id="dlTokens">Download tokens (CSS + JSON)</button></div>
+  </aside>
+  <main id="doc"></main>
+</div>
+<script src="brand.js"></script>
+</body>
+</html>

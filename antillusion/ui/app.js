@@ -23,7 +23,7 @@ function h(tag, props, ...kids) {
 }
 
 const ICONS = {
-  plus: "M12 5v14M5 12h14", x: "M6 6l12 12M18 6L6 18", up: "M12 19V5M5 12l7-7 7 7", folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z",
+  plus: "M12 5v14M5 12h14", pen: "M4 20l4.5-1L19 8.5 15.5 5 5 15.5zM13.5 7l3.5 3.5", person: "M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 20.5a7 7 0 0114 0", motion: "M3 17c3.5 0 5-10 9-10s4.5 6 9 6M3 7h3M3 11h2", x: "M6 6l12 12M18 6L6 18", up: "M12 19V5M5 12l7-7 7 7", folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z",
   clip: "M21 12.5l-8.5 8.5a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3", sliders: "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M16 9h4M4 15h4M16 15h4", gamepad: "M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 00-3.9 3.1L1.5 14a3 3 0 005.3 2.4L8 15h8l1.2 1.4A3 3 0 0022.5 14l-1.3-5.9A4 4 0 0017.3 5z", sparkle: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z", download: "M12 3v12M7 11l5 5 5-5M4 20h16", refresh: "M20 11a8 8 0 00-14.9-3M4 4v4h4M4 13a8 8 0 0014.9 3M20 20v-4h-4", chart: "M4 20V10M10 20V4M16 20v-7M2 20h20", book: "M5 4h13a1 1 0 011 1v15H6.5A1.5 1.5 0 015 18.5zM5 18.5A1.5 1.5 0 016.5 17H19", branch: "M6 4v10M6 14a3 3 0 100 6 3 3 0 000-6zM18 4a3 3 0 100 6 3 3 0 000-6zM18 10c0 5-6 3-9 6",
   globe: "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18", reload: "M20 11a8 8 0 10-2.3 5.7M20 4v7h-7", back: "M15 6l-6 6 6 6", fwd: "M9 6l6 6-6 6",
@@ -822,41 +822,60 @@ function showUpdateBanner(st) {
   document.body.append(bar);
 }
 async function updateModal() {
-  const body = h("div", { class: "upd" });
-  modal("تحديث Antillusion", body, "wide");
+  // Layout: version + status bar (one action) → progress → what's new (timeline) | settings & source. Quiet, neutral, no decoration.
+  const body = h("div", { class: "up2" });
+  modal("التحديثات", body, "wide");
+  let ver = null; call("app:version").then((v) => { ver = v; draw(U.st || {}); });
+  const fmtTime = (t) => t ? new Date(t).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }) : "—";
   const draw = (st) => {
     if (!body.isConnected) { U.listeners.delete(draw); return; }
     const busy = st.phase === "checking" || st.phase === "installing";
-    const pill = { idle: ["لم يُفحص بعد", ""], checking: ["جارٍ الفحص…", "busy"], installing: ["جارٍ التحديث…", "busy"], uptodate: ["أنت على أحدث إصدار", "ok"], available: ["يتوفر تحديث", "new"], ready: ["جاهز — أعد التشغيل", "new"], error: ["تعذّر الفحص", "bad"] }[st.phase] || ["", ""];
-    const ver = st.version ? "v" + st.version : "";
-    const hero = h("div", { class: "upd-hero" },
-      h("div", { class: "upd-logo" + (busy ? " spin" : ""), html: ico(st.phase === "ready" ? "check" : "refresh", 30) }),
-      h("div", { class: "upd-meta" }, h("b", null, "Antillusion " + ver), h("span", { class: "upd-pill " + pill[1] }, pill[0]),
-        h("small", { dir: "ltr" }, st.mode === "git" ? `${st.repo} · ${st.branch || ""} @ ${st.head || ""}${st.latest && st.available ? " → " + st.latest : ""}` : st.repo ? `${st.repo} · release${st.latest ? " " + st.latest : ""}` : ""),
-        st.checkedAt ? h("small", null, "آخر فحص: " + new Date(st.checkedAt).toLocaleTimeString("ar")) : null),
-      h("div", { class: "upd-actions" },
-        st.phase === "ready" ? h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل") :
-        st.available && st.mode === "git" ? h("button", { class: "btn primary", disabled: busy || st.dirty || st.ahead > 0, onclick: () => call("update:install") }, busy ? "جارٍ التحديث…" : "حدّث الآن") :
-        st.available && st.url ? h("button", { class: "btn primary", disabled: busy, onclick: () => call("update:install") }, busy ? "جارٍ التنزيل…" : "نزّل التحديث") : null,
-        h("button", { class: "btn", disabled: busy, onclick: () => call("update:check") }, busy ? "…" : "افحص الآن"),
-        S.settings.prevHead && st.mode === "git" ? h("button", { class: "btn", disabled: busy, title: "العودة إلى النسخة التي كنت عليها قبل آخر تحديث", onclick: async () => { if (await ask("التراجع عن آخر تحديث؟", { input: false, ok: "تراجع", danger: true, note: "سيعود الكود إلى النسخة السابقة ويُوقَف التحديث التلقائي. أعد تشغيل التطبيق بعدها." })) { const r = await call("update:rollback"); if (r) { const ns = await call("settings:set", {}); if (ns) S.settings = ns; } } } }, "تراجع") : null));
-    const parts = [hero];
-    if (st.error) parts.push(h("div", { class: "upd-note bad" }, "⚠ " + st.error));
-    if (st.dirty) parts.push(h("div", { class: "upd-note" }, "توجد تعديلات محلية غير محفوظة في ملفات المشروع، لذلك لن يُحدَّث تلقائياً حتى تحفظها أو تتراجع عنها."));
-    if (st.ahead > 0) parts.push(h("div", { class: "upd-note" }, `نسختك المحلية متقدمة بـ ${st.ahead} commit عن GitHub — لن يُطبَّق تحديث تلقائي.`));
-    if (st.note) parts.push(h("div", { class: "upd-note" }, st.note));
-    const list = st.phase === "ready" ? st.applied : st.commits;
-    if (list && list.length) parts.push(h("h4", null, st.phase === "ready" ? "ما الذي تغيّر" : `التغييرات الجديدة (${st.behind || list.length})`),
-      h("div", { class: "upd-log" }, list.map((c) => h("div", { class: "upd-c" }, h("code", { dir: "ltr" }, c.sha), h("span", { dir: "auto" }, c.subject), h("small", null, `${c.author} · ${c.when}`)))));
-    if (st.notes) parts.push(h("h4", null, "ملاحظات الإصدار"), h("pre", { class: "upd-notes", dir: "auto" }, st.notes));
-    if (st.installed) parts.push(h("div", { class: "upd-note ok" }, "حُدِّثت الاعتماديات (npm install) تلقائياً."));
+    const S2 = { idle: ["لم يُفحص بعد", "idle"], checking: ["يفحص GitHub…", "busy"], installing: ["يثبّت التحديث…", "busy"], uptodate: ["أنت على أحدث إصدار", "ok"], available: ["يتوفر إصدار جديد", "new"], ready: ["التحديث جاهز — أعد التشغيل لتطبيقه", "new"], error: ["تعذّر الفحص", "bad"] }[st.phase] || ["—", "idle"];
+    const version = st.version || (ver && ver.version) || "";
+    const [major, ...rest] = String(version).split(".");
+    const action = st.phase === "ready" ? h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل")
+      : st.available && (st.mode === "git" || st.url || st.filesUrl) ? h("button", { class: "btn primary", disabled: busy || (st.mode === "git" && (st.dirty || st.ahead > 0)), onclick: () => call("update:install") }, busy ? "جارٍ التثبيت…" : st.latest ? `ثبّت ${st.latest}` : "ثبّت التحديث")
+      : h("button", { class: "btn", disabled: busy, onclick: () => call("update:check") }, busy ? "يفحص…" : "افحص الآن");
+    const head = h("div", { class: "up2-head" },
+      h("div", { class: "up2-ver" },
+        h("span", { class: "up2-k" }, "الإصدار الحالي"),
+        h("div", { class: "up2-num", dir: "ltr" }, h("b", null, major || "—"), rest.length ? h("span", null, "." + rest.join(".")) : null),
+        h("div", { class: "up2-tags", dir: "ltr" }, ver && ver.channel ? h("span", { class: "up2-tag" }, ver.channel === "dev" ? "dev channel" : "stable") : null, ver && ver.commit ? h("code", null, ver.commit) : null, ver && ver.run ? h("span", { class: "up2-tag" }, "build " + ver.run) : null)),
+      h("div", { class: "up2-status" },
+        h("div", { class: "up2-state " + S2[1] }, h("i"), h("span", null, S2[0])),
+        h("small", null, (st.latest && st.available ? `المتاح: ${st.latest} · ` : "") + "آخر فحص " + fmtTime(st.checkedAt)),
+        h("div", { class: "up2-actions" }, action,
+          st.phase !== "ready" && (st.available || busy) ? h("button", { class: "btn ghost", disabled: busy, onclick: () => call("update:check") }, "إعادة الفحص") : null)));
+    const parts = [head];
+    if (st.phase === "installing") parts.push(h("div", { class: "up2-prog" + (st.progress == null ? " ind" : "") }, h("i", { style: st.progress != null ? `width:${Math.round(st.progress * 100)}%` : "" })));
+    const notes = [];
+    if (st.error) notes.push(["bad", st.error]);
+    if (st.dirty) notes.push(["warn", "توجد تعديلات محلية غير محفوظة في ملفات التطبيق، لذلك لن يُحدَّث تلقائياً حتى تحفظها أو تتراجع عنها."]);
+    if (st.ahead > 0) notes.push(["warn", `نسختك المحلية متقدمة بـ ${st.ahead} commit عن GitHub — لن يُطبَّق تحديث تلقائي.`]);
+    if (st.note) notes.push(["info", st.note]);
+    if (st.installed) notes.push(["ok", "حُدِّثت الاعتماديات (npm install) تلقائياً."]);
+    for (const [k, t] of notes) parts.push(h("div", { class: "up2-note " + k }, h("i"), h("span", { dir: "auto" }, t)));
+    const list = (st.phase === "ready" ? st.applied : st.commits) || [];
     const s = S.settings || {};
-    parts.push(h("div", { class: "set-card", style: "margin-top:16px" },
-      setRow("تحديث تلقائي", "يفحص كل 3 ساعات وعند التشغيل، وينزّل التحديث عندما لا يكون الوكيل مشغولاً — ثم يطلب منك إعادة التشغيل", switchEl(s.autoUpdate !== false, async (v) => { const r = await call("settings:set", { autoUpdate: v }); if (r) S.settings = r; }), true),
-      st.mode === "git" ? setRow("فرع التحديث", "اتركه فارغاً لاستخدام الفرع الحالي", h("input", { class: "field", dir: "ltr", value: s.updateBranch || "", placeholder: st.branch || "main", onchange: async (e) => { const r = await call("settings:set", { updateBranch: e.target.value.trim() }); if (r) { S.settings = r; call("update:check"); } } })) : null));
+    const left = h("div", { class: "up2-col" },
+      h("div", { class: "up2-h" }, st.phase === "ready" ? "ما الذي تغيّر" : list.length ? `التغييرات (${st.behind || list.length})` : "سجل التغييرات"),
+      list.length ? h("ol", { class: "up2-log" }, list.map((c) => h("li", null, h("p", { dir: "auto" }, c.subject), h("small", { dir: "ltr" }, h("code", null, c.sha), ` · ${c.author || ""} · ${c.when || ""}`))))
+        : h("div", { class: "up2-empty" }, st.phase === "uptodate" ? "لا تغييرات جديدة منذ آخر تحديث." : "افحص التحديثات لعرض ما تغيّر."),
+      st.notes ? h("pre", { class: "up2-relnotes", dir: "auto" }, st.notes) : null);
+    const right = h("div", { class: "up2-col side" },
+      h("div", { class: "up2-h" }, "الإعدادات"),
+      setRow("تحديث تلقائي", "يفحص عند التشغيل وكل 3 ساعات، وينزّل الملفات المعدّلة فقط عندما لا يكون الوكيل مشغولاً", switchEl(s.autoUpdate !== false, async (v) => { const r = await call("settings:set", { autoUpdate: v }); if (r) S.settings = r; }), true),
+      st.mode === "git" ? setRow("فرع التحديث", "فارغ = الفرع الحالي", h("input", { class: "field", dir: "ltr", value: s.updateBranch || "", placeholder: st.branch || "main", onchange: async (e) => { const r = await call("settings:set", { updateBranch: e.target.value.trim() }); if (r) { S.settings = r; call("update:check"); } } })) : null,
+      h("div", { class: "up2-h", style: "margin-top:18px" }, "المصدر"),
+      h("dl", { class: "up2-dl" },
+        h("dt", null, "المستودع"), h("dd", { dir: "ltr" }, st.repo || "—"),
+        h("dt", null, "الطريقة"), h("dd", null, st.mode === "git" ? `git · ${st.branch || ""}${st.head ? " @ " + st.head : ""}` : "إصدار مثبّت · تحديث تفاضلي"),
+        st.size ? [h("dt", null, "حجم المثبّت"), h("dd", { dir: "ltr" }, (st.size / 1048576).toFixed(1) + " MB (احتياطي)")] : null),
+      S.settings.prevHead && st.mode === "git" ? h("button", { class: "btn ghost up2-rb", disabled: busy, onclick: async () => { if (await ask("التراجع عن آخر تحديث؟", { input: false, ok: "تراجع", danger: true, note: "سيعود الكود إلى النسخة السابقة ويُوقَف التحديث التلقائي. أعد تشغيل التطبيق بعدها." })) { const r = await call("update:rollback"); if (r) { const ns = await call("settings:set", {}); if (ns) S.settings = ns; } } } }, "التراجع إلى النسخة السابقة") : null);
+    parts.push(h("div", { class: "up2-grid" }, left, right));
     body.replaceChildren(...parts.filter(Boolean));
   };
-  U.listeners.add(draw); draw(U.st);
+  U.listeners.add(draw); draw(U.st || {});
   const st = await call("update:state"); if (st) { U.st = st; draw(st); }
   if (!st || st.phase === "idle" || st.phase === "error") call("update:check");
 }

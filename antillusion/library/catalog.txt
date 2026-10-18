@@ -79,3 +79,11 @@ devops | hosting | vercel, netlify, cloudflare (workers, pages, d1, r2, kv), fly
 devops | monitoring | sentry, grafana, prometheus, loki, opentelemetry, uptime-kuma, posthog, plausible
 tools | CLI everyone uses | git, gh (GitHub CLI), ripgrep (rg), fd, jq, curl, httpie, make / just / task, ffmpeg, imagemagick, pandoc, sqlite3, psql, openssl, ssh, rsync, tar / 7z
 web platform | native APIs worth using before a library | fetch, AbortController, URL / URLSearchParams, FormData, structuredClone, Intl, crypto.subtle, IndexedDB, Web Workers, WebSocket, EventSource, WebRTC, Web Audio, Canvas 2D, WebGL2 / WebGPU, IntersectionObserver, ResizeObserver, dialog, popover, CSS grid / container queries / :has() / nesting, View Transitions, File System Access, Service Worker / PWA, Web Share, Clipboard, Notifications, Geolocation, WebAuthn (passkeys)
+games | engines | godot, unity, unreal, defold, bevy, love2d, monogame, gamemaker
+games | gamepad / input | Gamepad API (web), SDL3 gamepad API, Steam Input, Unity Input System, Godot InputMap, gamecontrollerdb (SDL mappings)
+games | networking / multiplayer | colyseus, geckos.io, socket.io, ws, nakama, playfab, photon (fusion, quantum), unity netcode for gameobjects, mirror, fishnet, godot high-level multiplayer, unreal replication, steam networking sockets, epic online services
+games | 2D skeletal animation | spine, dragonbones, rive, lottie, creature
+games | 3D characters / assets | mixamo, ready player me (verify the service is still offered), vroid studio, makehuman, blender, quaternius / kenney asset packs, poly haven
+games | audio middleware | fmod, wwise, howler, tone
+design | tools / libs | figma, penpot, inkscape, krita, aseprite, libresprite, blender, culori / chroma-js (colour), opentype.js, svg.js, paper.js, rough.js
+design | animation authoring | gsap, motion, anime.js, theatre.js, rive, lottie
