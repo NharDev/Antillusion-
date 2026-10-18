@@ -358,7 +358,8 @@ const H = {
   "quick:ask": (text, mode) => quickAsk(text, mode),
   "quick:hide": () => { if (quick && !quick.isDestroyed()) quick.hide(); return true; },
   "quick:info": () => ({ key: quickKey, cwd: store.settings().lastCwd || app.getPath("home"), material: materialOn() }),
-  "router:health": () => ({ models: agent.healthReport() }),
+  "router:health": () => ({ models: agent.healthReport(), diag: agent.lastDiag(), scout: store.settings().scout || null }),
+  "router:scout": async () => { await ensureLocalRouter(); return agent.runScout((p) => send({ t: "scout-progress", ...p, last: undefined })); },
   "router:reset": () => { agent.resetHealth(); return true; },
   "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
@@ -463,7 +464,7 @@ async function rollbackUpdate() {
 
 // Windows 11 (22H2+) draws a real translucent Acrylic backdrop behind the window: the UI then lets it show through ("Liquid Glass")
 const winBuild = () => (process.platform === "win32" ? +(require("os").release().split(".")[2] || 0) : 0);
-const materialOn = () => store && store.settings().glass !== false && winBuild() >= 22621;
+const materialOn = () => store && store.settings().windowGlass === true && winBuild() >= 22621;   // opt-in: the default is a solid dark window
 const overlay = (theme) => (materialOn() ? { color: "#00000000", symbolColor: theme === "light" ? "#3a3d45" : "#c9ccd3", height: 40 } : theme === "light" ? { color: "#f4f4f6", symbolColor: "#4c4f57", height: 40 } : { color: "#0e0f11", symbolColor: "#a9adb6", height: 40 });
 
 /* ---------- Quick Ask: a small glass window on a global shortcut, from any app ---------- */

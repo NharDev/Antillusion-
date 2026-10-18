@@ -8,6 +8,7 @@ const os = require("os");
 const tools = require("./tools");
 const library = require("./library");
 const skills = require("./skills");
+const scoutLib = require("./scout");
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const NLCH = String.fromCharCode(10);
@@ -196,8 +197,9 @@ function createAgent({ store, emit, getKey, ui }) {
   const isBad = (id) => { const t = bad.get(id); if (t && t < Date.now()) bad.delete(id); return !!(t && t >= Date.now()); };
   function fallbackOrder(s, tried = []) {
     const st = store.settings(), have = new Set(((store.models && store.models().list) || []).map((m) => m.id)), out = [];
-    for (const id of [s.model, ...(st.favorites || []), ...PREFERRED, ...have]) if (id && (id === s.model || have.has(id)) && !out.includes(id) && !tried.includes(id) && !isBad(id)) out.push(id);
-    return out.slice(0, 6);
+    const sc = st.scout && Date.now() - st.scout.at < 6 * 3600e3 ? st.scout.ok.map((x) => x.id) : [];
+    for (const id of [s.model, ...(st.favorites || []), ...sc, ...PREFERRED, ...have]) if (id && (id === s.model || have.has(id)) && !out.includes(id) && !tried.includes(id) && !isBad(id)) out.push(id);
+    return out.slice(0, 8);
   }
 
   async function complete(s, signal) {
@@ -226,7 +228,7 @@ function createAgent({ store, emit, getKey, ui }) {
       }
     }
     else if (s._cur) body.model = s._cur;   // own server (OmniRoute…): the model the run fell back to
-    if (info.local) body.max_tokens = Math.min(body.max_tokens, Math.max(1024, Math.floor((info.context_length || 32768) / 4)));   // leave the prompt room inside a small context window
+    if (info.local) body.max_tokens = Math.min(body.max_tokens, st.localMaxTokens || 4096, Math.max(1024, Math.floor((info.context_length || 32768) / 4)));   // leave the prompt room inside a small context window
     emit({ t: "activity", sid: s.id, text: `ينتظر ${body.model}…` });
     // watchdog: a provider that never answers, or stalls mid-stream, is cut off so the run can move to another model.
     // The per-attempt controller also lets the user switch models mid-request (switchModel → "switch").
@@ -496,7 +498,7 @@ function createAgent({ store, emit, getKey, ui }) {
     running.set(s.id, { ac, cut: null });
     emit({ t: "status", sid: s.id, running: true });
     const st = store.settings();
-    s._alt = 0; s._cur = null;
+    s._alt = 0; s._cur = null; let scouted = false;
     const ownSrv = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
     if (ownSrv && isBad(s.model)) {   // it failed a moment ago: start on a working one instead of waiting for it to fail again
       const next = fallbackOrder(s)[0];
@@ -518,7 +520,7 @@ function createAgent({ store, emit, getKey, ui }) {
         const tried = [], trail = [];
         let route = null, waits = 0;
         // one notice per step that grows as models are tried (instead of a wall of warnings), then settles into a one-line summary
-        const showRoute = (level, text, extra = {}) => { route = upsert(s, { id: route ? route.id : uid(), kind: "notice", route: trail.slice(), level, text, at: Date.now(), ...extra }); };
+        const showRoute = (level, text, extra = {}) => { route = upsert(s, { id: route ? route.id : uid(), kind: "notice", route: trail.map(({ raw, ...x }) => x), level, text, at: Date.now(), ...extra }); };
         for (let attempt = 0, switches = 0; ; attempt++) {
           const t0 = Date.now(), using = own ? s._cur || s.model : s.model;
           try {
@@ -538,7 +540,7 @@ function createAgent({ store, emit, getKey, ui }) {
             // the server itself is unreachable: every model would fail the same way, so don't blame (and blacklist) them
             const switchable = e.conn ? false : own ? (!st2 || st2 >= 500 || [401, 402, 403, 404, 408, 429].includes(st2) || /\[\d{3}\]/.test(e.message)) : (!st2 || st2 >= 500 || st2 === 408 || st2 === 429);
             const from = own ? s._cur || s.model : s.model, why = classify(e);
-            if (switchable) { trail.push({ model: from, reason: why.label, kind: why.kind }); noteHealth(from, false, why); }
+            if (switchable) { trail.push({ model: from, reason: why.label, kind: why.kind, raw: String(e.message).slice(0, 4000) }); noteHealth(from, false, why); }
             if (own && switchable) { tried.push(from); bad.set(from, Date.now() + why.ms); }
             const next = own ? fallbackOrder(s, tried)[0] : null;
             const limit = own ? 5 : 2;
@@ -553,11 +555,33 @@ function createAgent({ store, emit, getKey, ui }) {
                 for (let i = secs; i > 0; i--) { emit({ t: "activity", sid: s.id, text: `فترة تبريد — إعادة المحاولة بعد ${i} ث` }); await sleep(1000, ac.signal); }
                 continue;
               }
+              // the router's own combos are exhausted: find models that answer right now and carry on with them
+              if (own && switchable && !scouted && store.models) {
+                scouted = true;
+                const all = (store.models().list || []).filter((m) => !tried.includes(m.id) && !isBad(m.id));
+                if (scoutLib.candidates(all, { max: 1 }).length) {
+                  const st3 = store.settings(), base = (st3.baseUrl || "").replace(/\/+$/, "");
+                  showRoute("warn", "المسارات المعتادة متعطّلة — أبحث عن نماذج تعمل الآن لدى مزوّديك…", { detail: route && route.detail });
+                  const res = await scoutLib.scout({ baseUrl: base, key: getKey(), models: all, max: st3.scoutMax || 30, timeoutMs: (st3.scoutTimeout || 25) * 1000, signal: ac.signal,
+                    onProgress: (p) => { showRoute("warn", `أبحث عن نماذج تعمل الآن لدى مزوّديك… ${p.done}/${p.total}${p.ok ? ` · وجدت ${p.ok}` : ""}`, { detail: route && route.detail }); emit({ t: "activity", sid: s.id, text: `فحص النماذج ${p.done}/${p.total}` }); } });
+                  if (ac.signal.aborted) throw abortErr();
+                  for (const b of res.bad) bad.set(b.id, Date.now() + 5 * 60e3);
+                  store.setSettings({ scout: { at: res.at, ok: res.ok.map((x) => ({ id: x.id, ms: x.ms })), bad: res.bad.slice(0, 60).map((x) => ({ id: x.id, reason: x.reason, code: x.code })) } });
+                  emit({ t: "scout", result: store.settings().scout });
+                  if (res.ok.length) {
+                    s._cur = res.ok[0].id; attempt = -1;
+                    showRoute("warn", `وجدت ${res.ok.length} نموذجاً يعمل — أكمل بـ ${s._cur} (${(res.ok[0].ms / 1000).toFixed(1)} ث)…`, { detail: route && route.detail });
+                    continue;
+                  }
+                }
+              }
               const sum = summarizeProviderError(e.message);
+              const diag = mergeDiag(trail.map((x) => x.raw).concat(String(e.message)));
               const tail = trail.length > 1 ? { detail: (sum ? sum.detail : String(e.message)) + "\n\nجُرّب: " + trail.map((x) => `${x.model} (${x.reason})`).join("، ") } : sum ? { detail: sum.detail } : {};
               if (route) route.level = "warn";
-              if (sum) throw Object.assign(new Error(sum.text), { ...tail, providerError: true, route: trail.slice() });
-              if (own && switchable) throw Object.assign(new Error(`${why.label}: ${String(e.message).slice(0, 160)} — لم يعد هناك نموذج بديل يعمل. جرّب نموذجاً آخر أو تحقق من OmniRoute.`), { ...tail, providerError: true, route: trail.slice() });
+              const scoutNote = scouted ? " فحصتُ بقية النماذج المتاحة أيضاً ولم يستجب أيّ منها." : "";
+              if (sum) throw Object.assign(new Error(sum.text + scoutNote), { ...tail, providerError: true, route: trail.slice().map(({ raw, ...x }) => x), diag });
+              if (own && switchable) throw Object.assign(new Error(`${why.label}: ${String(e.message).slice(0, 160)} — لم يعد هناك نموذج بديل يعمل.${scoutNote} جرّب نموذجاً آخر أو تحقق من OmniRoute.`), { ...tail, providerError: true, route: trail.slice().map(({ raw, ...x }) => x), diag });
               throw e;
             }
             if (own) s._cur = next; else { s._alt = (s._alt || 0) + 1; s._chunkHint = true; }
@@ -590,7 +614,8 @@ function createAgent({ store, emit, getKey, ui }) {
       }
     } catch (e) {
       if (e.name === "AbortError" || ac.signal.aborted) notice(s, "تم الإيقاف.");
-      else notice(s, e.message || String(e), "error", e.providerError ? { detail: e.detail, actions: ["router", "model", "health"], route: e.route } : undefined);
+      else notice(s, e.message || String(e), "error", e.providerError ? { detail: e.detail, actions: ["router", "model", "health"], route: e.route, diag: e.diag } : undefined);
+      if (e.diag && e.diag.length) { lastDiag = { at: Date.now(), providers: e.diag }; emit({ t: "diag", diag: lastDiag }); }
     } finally {
       emit({ t: "activity", sid: s.id, text: "" });
       for (const [id, w] of waiting) if (w.sid === s.id) { waiting.delete(id); w.resolve({ decision: "deny" }); }
@@ -715,9 +740,18 @@ function createAgent({ store, emit, getKey, ui }) {
     return true;
   }
 
+  let lastDiag = null;
+  // one entry per provider across all attempts of a step
+  function mergeDiag(raws) { const m = new Map(); for (const r of raws) for (const p of scoutLib.diagnose(r).providers) { const e = m.get(p.provider); if (e) { for (const x of p.models) if (!e.models.includes(x)) e.models.push(x); } else m.set(p.provider, p); } return [...m.values()]; }
   const healthReport = () => { const out = {}; for (const [m, h] of health) out[m] = { ...h, until: isBad(m) ? bad.get(m) : 0 }; return out; };
   const resetHealth = () => { bad.clear(); health.clear(); emit({ t: "health", reset: true }); };
-  return { send, stop, switchModel, healthReport, resetHealth, timeline, rewind, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
+  async function runScout(onProgress) {
+    const st = store.settings(), res = await scoutLib.scout({ baseUrl: (st.baseUrl || "").replace(/\/+$/, ""), key: getKey(), models: (store.models().list || []), max: st.scoutMax || 40, enough: 12, timeoutMs: (st.scoutTimeout || 25) * 1000, onProgress });
+    for (const b of res.bad) bad.set(b.id, Date.now() + 5 * 60e3); for (const o of res.ok) bad.delete(o.id);
+    store.setSettings({ scout: { at: res.at, ok: res.ok.map((x) => ({ id: x.id, ms: x.ms })), bad: res.bad.slice(0, 80).map((x) => ({ id: x.id, reason: x.reason, code: x.code })) } });
+    return store.settings().scout;
+  }
+  return { send, stop, switchModel, healthReport, resetHealth, runScout, lastDiag: () => lastDiag, timeline, rewind, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
 }
 
 module.exports = { createAgent, uid };

@@ -323,7 +323,7 @@ function itemEl(v, it) {
     it.settled ? h("span", { class: "rt-hop ok" }, h("i"), h("b", null, (String(it.text).match(/بـ (\S+)/) || [])[1] || "")) : null) : null;
   if (it.route && it.settled) return h("details", { class: "notice route settled", data: { id: it.id }, dir: "auto" }, h("summary", null, icoEl("route", 13), h("span", null, it.text)), trail);
   return h("div", { class: "notice " + (it.level || "info") + (it.detail || acts.length || trail ? " rich" : "") + (it.route ? " route" : ""), data: { id: it.id }, dir: "auto" }, h("div", { class: "n-text" }, it.route && it.level === "warn" ? h("span", { class: "spin" }) : null, it.text),
-    trail, acts.length ? h("div", { class: "n-acts" }, acts) : null,
+    trail, it.diag && it.diag.length ? diagEl(it.diag) : null, acts.length ? h("div", { class: "n-acts" }, acts) : null,
     it.detail ? h("details", { class: "n-detail" }, h("summary", null, "التفاصيل التقنية"), h("pre", { dir: "ltr" }, String(it.detail).replace(/;\s+/g, ";\n"))) : null);
 }
 
@@ -510,9 +510,12 @@ function modelPicker(anchor) {
       h("div", { class: "mmain" }, h("b", { dir: "ltr" }, m.name), h("small", { dir: "ltr" }, m.id.replace(/:free$/, ""))),
       h("div", { class: "mmeta", dir: "ltr" }, h("span", { title: "نافذة السياق" }, fmtTok(m.context_length)), m.architecture.input_modalities.includes("image") ? h("span", { title: "يقرأ الصور", html: ico("eye", 12) }) : null,
         (m.supported_parameters || []).includes("reasoning") ? h("span", { title: "يدعم التفكير", html: ico("brain", 12) }) : null, h("span", { class: +m.pricing.prompt === 0 ? "free" : "", title: +m.pricing.prompt === 0 ? "متاح للاستخدام بمفتاحك" : "سعر الإدخال / الإخراج لكل مليون رمز" }, price(m))));
-    const favList = list.filter((m) => fav.has(m.id)), rest = list.filter((m) => !fav.has(m.id)), kids = [];
+    const sc = S.settings.scout && Date.now() - S.settings.scout.at < 6 * 3600e3 ? new Set(S.settings.scout.ok.map((x) => x.id)) : new Set();
+    const okList = q || filter !== "all" ? [] : S.models.filter((m) => sc.has(m.id));
+    const favList = list.filter((m) => fav.has(m.id) && !okList.includes(m)), rest = list.filter((m) => !fav.has(m.id) && !okList.includes(m)), kids = [];
+    if (okList.length) kids.push(h("div", { class: "mgroup" }, "تعمل الآن — مُختبرة"), ...okList.map(rowFor));
     if (favList.length) kids.push(h("div", { class: "mgroup" }, "المفضّلة"), ...favList.map(rowFor));
-    if (rest.length) { if (favList.length) kids.push(h("div", { class: "mgroup" }, "كل النماذج")); kids.push(...rest.map(rowFor)); }
+    if (rest.length) { if (favList.length || okList.length) kids.push(h("div", { class: "mgroup" }, "كل النماذج")); kids.push(...rest.map(rowFor)); }
     listEl.replaceChildren(...(kids.length ? kids : [h("div", { class: "side-empty" }, "لا نتائج")]));
   };
   const filters = h("div", { class: "seg small" }, [["all", "الكل"], ["fav", "المفضّلة"], ["vision", "يقرأ الصور"]].map(([k, l]) => h("button", { class: k === filter ? "on" : "", onclick: (e) => { filter = k; [...e.target.parentNode.children].forEach((b) => b.classList.toggle("on", b === e.target)); draw(); } }, l)));
@@ -694,7 +697,7 @@ async function settingsModal(openTab) {
     ] },
     { id: "look", title: "المظهر", icon: "sun", sub: "السِّمة وتخطيط الواجهة", rows: [
       R("السِّمة", "داكنة أو فاتحة", h("div", { class: "theme-cards" }, themeCard("dark", "داكنة", "linear-gradient(135deg,#191b1f,#0e0f11)"), themeCard("light", "فاتحة", "linear-gradient(135deg,#ffffff,#e9eaee)")), { tight: true }),
-      R("موضع لوحة الاستعراض", "الجهة التي تُفتح فيها بجانب المحادثة", segEl({ right: "يمين", left: "يسار" }, s.panelSide || "right", (k) => save({ panelSide: k })), { tight: true }),      R("زجاج النافذة", "خامة Acrylic حقيقية خلف النافذة على Windows 11 — تُطبَّق بعد إعادة التشغيل", switchEl(s.glass !== false, (v) => save({ glass: v })), { tight: true }),
+      R("موضع لوحة الاستعراض", "الجهة التي تُفتح فيها بجانب المحادثة", segEl({ right: "يمين", left: "يسار" }, s.panelSide || "right", (k) => save({ panelSide: k })), { tight: true }),      R("نافذة شفافة", "تُظهر ما خلف النافذة بخامة Acrylic على Windows 11 (معطّلة افتراضياً) — تُطبَّق بعد إعادة التشغيل", switchEl(s.windowGlass === true, (v) => save({ windowGlass: v })), { tight: true }),
       R("Quick Ask", "اختصار عام يفتح نافذة سؤال سريعة من أي برنامج (افتراضياً Alt+Space) — يُطبَّق بعد إعادة التشغيل", h("input", { class: "field", dir: "ltr", value: s.quickKey || "", placeholder: "Alt+Space", onchange: (e) => save({ quickKey: e.target.value.trim() }) })),
       R("ما الجديد", "اعرض شاشة مزايا الإصدار الحالي", h("button", { class: "btn", onclick: async () => { const w = await call("app:whatsnew"); if (w && w.current) whatsNew(w.current, w.all, { preview: true }); } }, "عرض"), { tight: true }),
     ] },
@@ -869,9 +872,20 @@ function healthOf(id) {
   if (x.lastOk && (!x.lastFail || x.lastOk > x.lastFail)) return { st: "ok", label: `يعمل · ${x.ms ? (x.ms / 1000).toFixed(1) + " ث للخطوة" : ""}` };
   return { st: "warn", label: x.last ? "آخر محاولة: " + x.last : "غير مستقر" };
 }
+const diagEl = (list) => h("div", { class: "diag" }, list.map((p) => h("div", { class: "dg-row" },
+  h("b", { dir: "ltr" }, p.provider), h("span", { class: "dg-why" }, p.reason), h("small", null, p.fix || ""), h("code", { dir: "ltr", title: p.models.join("\n") }, p.models[0] + (p.models.length > 1 ? ` +${p.models.length - 1}` : "")))));
 const healthDot = (id) => { const x = healthOf(id); return h("span", { class: "hdot " + x.st, title: x.label }); };
+function scoutBox(redraw) {
+  const sc = S.settings.scout, fresh = sc && Date.now() - sc.at < 6 * 3600e3;
+  const run = async (e) => { const b = e.currentTarget; b.disabled = true; b.replaceChildren(h("span", { class: "spin" }), h("span", { class: "scout-prog" }, "يفحص النماذج…"));
+    const r = await call("router:scout"); if (r) { S.settings.scout = r; toast(r.ok.length ? `يعمل الآن ${r.ok.length} نموذجاً — سيُستخدم أسرعها تلقائياً عند الحاجة` : "لم يستجب أي نموذج — راجع تشخيص المزوّدين"); } redraw(); };
+  return h("div", { class: "h-sec scout" },
+    h("div", { class: "scout-h" }, h("div", null, h("h4", null, "نماذج تعمل الآن"), h("small", { class: "muted" }, fresh ? `آخر فحص ${relTime(sc.at)} — ${sc.ok.length} يعمل من ${sc.ok.length + sc.bad.length}` : "يرسل طلباً صغيراً جداً لنموذج أو اثنين من كل مزوّد ليعرف أيها يستجيب فعلاً، ثم يستخدمها الوكيل عند تعطّل المسارات المعتادة.")),
+      h("button", { class: "btn primary", onclick: run }, fresh ? "أعد الفحص" : "ابحث عن نماذج تعمل")),
+    fresh && sc.ok.length ? h("div", { class: "scout-ok" }, sc.ok.map((x) => h("button", { class: "rt-hop ok", title: "استخدمه", onclick: () => { patchSession({ model: x.id }); toast("تم التبديل إلى " + x.id); } }, h("i"), h("b", null, x.id), h("small", null, (x.ms / 1000).toFixed(1) + " ث")))) : null);
+}
 async function healthModal() {
-  const r = await call("router:health"); if (r) S.health = r.models || {};
+  const r = await call("router:health"); if (r) { S.health = r.models || {}; if (r.diag) S.diag = r.diag; if (r.scout) S.settings.scout = r.scout; }
   const body = h("div", { class: "health" });
   const m = modal("صحة النماذج", body, "wide");
   const draw = () => {
@@ -881,6 +895,8 @@ async function healthModal() {
     const counts = ids.reduce((c, id) => ((c[healthOf(id).st] = (c[healthOf(id).st] || 0) + 1), c), {});
     body.replaceChildren(
       h("p", { class: "muted", style: "margin:0 0 14px" }, "يتتبّع Antillusion كل نموذج يمرّ عبر الموجّه: النماذج المتعطّلة تُتجاوز تلقائياً لفترة تناسب سبب العطل (دقيقة لحدّ الطلبات، 10 دقائق لنفاد الرصيد)، ثم تُجرَّب من جديد."),
+      scoutBox(draw),
+      S.diag && S.diag.providers && S.diag.providers.length ? h("div", { class: "h-sec" }, h("h4", null, "تشخيص المزوّدين — آخر فشل"), diagEl(S.diag.providers)) : null,
       h("div", { class: "h-sum" }, [["ok", "تعمل"], ["cool", "في تبريد"], ["down", "متعطّلة"], ["unknown", "لم تُجرَّب"]].map(([k, l]) => h("div", { class: "h-stat " + k }, h("b", null, String(counts[k] || 0)), h("span", null, l)))),
       h("div", { class: "h-grid" }, ids.map((id) => { const x = (S.health || {})[id] || {}, st = healthOf(id);
         return h("div", { class: "h-card " + st.st }, h("div", { class: "h-top" }, h("span", { class: "hdot " + st.st }), h("b", { dir: "ltr" }, id)),
@@ -1081,6 +1097,9 @@ function onEvt(e) {
   if (e.t === "servers") { S.servers = e.list; renderServers(); const t = activeTab(); if (t && t.kind === "web" && !t.wv) drawBlank(t); return; }
   if (e.t === "update") return onUpdateState(e.state);
   if (e.t === "open-session") { const m = e.meta; if (!S.sess.has(m.id)) { view(m, []); S.order.unshift(m); } openSession(m.id); renderSidebar(); return; }
+  if (e.t === "scout") { S.settings.scout = e.result; return; }
+  if (e.t === "diag") { S.diag = e.diag; return; }
+  if (e.t === "scout-progress") { const el = document.querySelector(".scout-prog"); if (el) el.textContent = `يفحص ${e.done}/${e.total}${e.ok ? ` · يعمل ${e.ok}` : ""}…`; return; }
   if (e.t === "health") { if (e.reset) S.health = {}; else (S.health || (S.health = {}))[e.model] = e.health; return; }
   if (e.t === "router") return toast("OmniRoute يُثبَّت في الخلفية — قد يستغرق بضع دقائق، وسيعمل تلقائياً عند اكتماله");
   if (e.t === "preview") return openPreview(e);
