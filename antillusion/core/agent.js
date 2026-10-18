@@ -7,6 +7,7 @@ const path = require("path");
 const os = require("os");
 const tools = require("./tools");
 const library = require("./library");
+const skills = require("./skills");
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const NLCH = String.fromCharCode(10);
@@ -16,7 +17,7 @@ const estTokens = (msgs) => Math.ceil(JSON.stringify(msgs).length / 3.6);
 
 const MODE_TEXT = {
   agent: "MODE: CODE (agent). You have full tools. Do the work end to end: explore, implement, run, verify.",
-  plan: "MODE: PLAN. You are read-only: explore the workspace and the library/sources, then answer with a concrete implementation plan (files to create/change, key decisions, commands, verification steps, risks). Do NOT attempt to modify files or run commands — those tools are disabled. End by asking the user to approve the plan; they can then press \"Execute plan\".",
+  plan: "MODE: PLAN. You are read-only: explore the workspace and the library/sources, then deliver a plan the user can approve. Format (concise, concrete, no filler): 1) Goal in one sentence + assumptions you made; 2) Scope: Must / Should / Later; 3) Architecture & key decisions (stack with a reason each, data model, main files to create/change); 4) Milestones — each leaves a runnable product, lists the files touched and an acceptance check you will run; 5) Risks/unknowns with mitigations; 6) At most 3 open questions that change the build. Publish the milestones with todo_write (that is the checklist the user sees and the one you execute next). Do NOT modify files or run commands — those tools are disabled. End with: \"جاهز للتنفيذ — اضغط «نفّذ الخطة» أو عدّل أي نقطة.\"",
   ask: "MODE: ASK. You are read-only: answer questions about the code and about programming, reading whatever you need. Do not propose to make changes unless asked; modifying tools are disabled.",
 };
 
@@ -43,7 +44,7 @@ function systemPrompt(s, settings, libraryDirs) {
 
 # Speed (the user is watching and waiting)
 - Act immediately. No preamble, no restating the request, no long plan in prose. One short sentence, then tool calls.
-- Batch: issue all independent tool calls (several reads, searches, lookups) together in ONE turn — they run in parallel.
+- Batch: issue all independent tool calls (several reads, searches, lookups) together in ONE turn — they run in parallel. To look at several files use read_many (one call); to change several places in one file use multi_edit (one call, atomic) instead of repeated edit_file.
 - New/empty workspace: do not explore it. Use use_template ONLY when the user message carries a <starter_template> hint, or the request is plainly the same kind of thing as a template below (a store → store, a Minecraft-like game → voxel-game). Then make targeted edit_file changes — never rewrite a template. For anything else (a calculator, Tetris, a quiz, a converter…) do NOT use a template: write the files directly.
 - Output size: long tool calls time out. Keep every write_file under ~150 lines. Split a build into separate files (index.html, style.css, app.js — one call each); if a single file must be longer, write it in parts (more=true, then append=true). Never put a whole large app in one call.
 - Scope: build exactly what was asked. After use_template the request is ALREADY satisfied unless the user named specific changes: serve it, verify once, then stop and offer 3–4 concrete next upgrades as a short list for the user to choose from. Never add unrequested features (extra systems, modes, UI) on your own — every extra step costs the user time and quota.
@@ -471,7 +472,8 @@ function createAgent({ store, emit, getKey, ui }) {
     }
   }
 
-  function send(sid, { text, attachments = [] }) {
+  function send(sid, { text: rawText, attachments = [] }) {
+    let text = rawText;
     const s = store.getSession(sid);
     if (!s) throw new Error("جلسة غير موجودة");
     if (running.has(sid)) throw new Error("الوكيل يعمل الآن — أوقفه أولاً أو انتظر.");
@@ -484,6 +486,23 @@ function createAgent({ store, emit, getKey, ui }) {
       else if (a.kind === "text") body += `\n\n<attached_file name="${a.name}"${a.path ? ` path="${a.path}"` : ""}>\n${a.text}\n</attached_file>`;
       else if (a.kind === "ref") body += `\n\n[Attached file on disk: ${a.path} — read it with read_file if needed]`;
     }
+    // skills: "/video …" forces one; otherwise a strong keyword match switches one on (once per session)
+    const skillDirs = [store.dir && path.join(store.dir, "skills"), path.join(s.cwd, ".antillusion", "skills")];
+    let skill = null, forced = false;
+    const slash = text ? skills.parseSlash(String(text).trim(), skillDirs) : null;
+    if (slash) { skill = slash.skill; forced = true; body = slash.rest || `(Use the "${skill.title}" skill. Ask me ONE short question about what to create, then proceed.)`; text = body; }
+    else if (s.mode !== "ask" && text && String(text).length > 8) { const m = skills.match(String(text), skillDirs); if (m && !(s.skillsSent || []).includes(m.name)) skill = m; }
+    if (skill) {
+      const sent = s.skillsSent || (s.skillsSent = []), seenRefs = s.refsSent || (s.refsSent = []);
+      if (forced || !sent.includes(skill.name)) {
+        if (!sent.includes(skill.name)) sent.push(skill.name);
+        body += `\n\n<skill name="${skill.name}" title="${skill.title}">\n${skill.body}\n</skill>`;
+        let budget = 14000;
+        for (const id of skill.refs) { if (seenRefs.includes(id) || budget < 1500) continue; const t = library.read(id, libDirs(s)); if (/^No playbook/.test(t)) continue; seenRefs.push(id); body += `\n\n<library_reference id="${id}">\n${t.slice(0, budget)}\n</library_reference>`; budget -= t.length; }
+        if (skill.template && !seenRefs.includes("tpl:" + skill.template) && library.templates().some((t) => t.name === skill.template)) { seenRefs.push("tpl:" + skill.template); body += `\n\n<starter_template name="${skill.template}">This skill has a tested starter: call use_template("${skill.template}") first, then customise it with edit_file/multi_edit.</starter_template>`; }
+        notice(s, `⚡ تم تفعيل قدرة: ${skill.title}${forced ? "" : " (تلقائياً)"}`, "ok");
+      }
+    }
     if (s.mode !== "ask" && text && String(text).length < 4000) {   // hand over the matching playbooks/template now: saves the model a search round-trip
       const ref = library.autoRefs(text, libDirs(s), s.messages.length ? 5000 : 9000), seen = s.refsSent || (s.refsSent = []);
       const fresh = ref.cards.filter((c) => !seen.includes(c.id));
@@ -493,11 +512,25 @@ function createAgent({ store, emit, getKey, ui }) {
     s._seen = new Map(); s._fails = 0;
     s._blueprint = text && String(text).length > 8 && !/<starter_template/.test(body) && /(اعمل|ابن|انشئ|أنشئ|صمم|بدي|اريد|أريد|طور|برمج|سوي|build|create|make|implement|develop|write|add|design)/i.test(text) ? String(text) : null;
     s.messages.push({ role: "user", content: parts.length ? [{ type: "text", text: body || "(see attached)" }, ...parts] : body });
-    upsert(s, { id: uid(), kind: "user", text: String(text || ""), attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, thumb: a.kind === "image" ? a.dataUrl : undefined })), at: Date.now() });
+    upsert(s, { id: uid(), kind: "user", text: String(rawText || ""), attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, thumb: a.kind === "image" ? a.dataUrl : undefined })), at: Date.now() });
     if (!s.titled && text) { s.title = String(text).replace(/\s+/g, " ").trim().slice(0, 48); s.titled = true; emit({ t: "session", sid, meta: store.meta(s) }); }
     store.saveSession(s);
     run(s);   // deliberately not awaited: progress flows through emit()
     return true;
+  }
+
+  /** Turns a vague idea into a precise build brief (one non-streaming model call). Returns the text; the UI puts it back in the composer for the user to edit. */
+  async function expandPrompt(sid, text) {
+    const s = sid && store.getSession(sid), st = store.settings(), model = (s && s.model) || st.model;
+    const raw = String(text || "").trim(); if (!raw) throw new Error("اكتب فكرتك أولاً");
+    const dirs = [store.dir && path.join(store.dir, "skills"), s && path.join(s.cwd, ".antillusion", "skills")];
+    const sl = skills.parseSlash(raw, dirs), skill = sl ? sl.skill : skills.match(raw, dirs, 6), idea = sl ? sl.rest || raw : raw;
+    const sys = `You turn a rough idea into a precise, buildable brief for an AI coding agent. Reply in the SAME language as the idea (Arabic → Arabic). Output ONLY the brief, no preamble, at most ~230 words, as a short list with these bold labels: الهدف/Goal · المستخدمون/Users · الميزات الأساسية (3–7, must-have first) · التصميم والأسلوب · التقنية المقترحة (with a reason) · حالات خاصة وأخطاء متوقعة · معايير القبول (checkable) · خارج النطاق. Keep every constraint the user stated, make sensible defaults for the rest and mark them "(افتراضي)". Never invent brand names or facts. No code.${skill && skill.brief ? ` This request fits the "${skill.title}" skill — also cover: ${skill.brief}.` : ""}`;
+    const r = await request({ model, max_tokens: 1200, usage: { include: true }, messages: [{ role: "system", content: sys }, { role: "user", content: idea }] });
+    const j = await r.json(), out = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+    if (s) { account(s, j.usage, model); pushUsage(s); }
+    if (!out) throw new Error((j.error && j.error.message) || "لم يصل ردّ من النموذج");
+    return (sl ? `/${skill.command} ` : "") + out.trim();
   }
 
   function stop(sid) {
@@ -527,7 +560,7 @@ function createAgent({ store, emit, getKey, ui }) {
     return true;
   }
 
-  return { send, stop, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
+  return { send, stop, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
 }
 
 module.exports = { createAgent, uid };

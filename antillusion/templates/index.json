@@ -54,5 +54,13 @@
     "run": "start_server with command \"node server.js\" and port 3000 (no npm install needed). Front-end is public/index.html served by the same server.",
     "notes": "Add a resource: create its table in db.exec, write a validate function, copy the five \"items\" routes. Test with web_fetch http://localhost:3000/api/items or run_command curl. data.db is created next to server.js — add it to .gitignore.",
     "strong": "api rest سيرفر خادم backend"
+  },
+  {
+    "name": "motion-video",
+    "title": "Motion-graphics / cinematic video studio (canvas, no dependencies): timeline scenes as pure functions of time, kinetic text, charts, particles, transitions, synthesised sound + music, cinematic module (letterbox, subtitles, dialogue, title cards, parallax skyline), export to WebM / frames zip / MP4 (render.mjs + ffmpeg)",
+    "tags": "video motion graphics animation animated explainer promo intro outro kinetic typography logo reveal trailer cinematic cutscene film short story scene movie title تحريك فيديو موشن جرافيك انترو مقدمه اعلان ترويجي لوجو متحرك نصوص متحركه سينمائي مشهد فيلم قصير كتابه ترويج",
+    "run": "serve_static (or open_preview index.html). Export buttons are in the page; MP4 with sound: `node render.mjs` (needs playwright + ffmpeg).",
+    "notes": "Edit ONLY scenes.js: CONFIG (size/fps/duration/palette/font/rtl) → M.scene(start, end, (ctx, s) => …, { in/out transitions }) → M.sfx / M.music. s = {t, p, dur, T, w, h}. Helpers: Motion.fx (bg, text, bars, donut, lineChart, particles, device, counter, ring, line, path), Motion.cam, Motion.ease, Cine (letterbox, subtitle, dialogue, title, sky, skyline, silhouette, grade, grain, vignette, flash, fade; set Cine.ratio=2.39 when using letterbox). scenes-cinematic.js is a complete 17 s short film (open index.html?demo=cinematic) — copy it over scenes.js to start from a story. Verify frames with video.renderFrame(t) in preview_read. Never animate Arabic per letter (use unit:'word', rtl:true).",
+    "strong": "موشن جرافيك motion graphics فيديو انترو cinematic سينمائي"
   }
 ]

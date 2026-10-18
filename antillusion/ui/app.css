@@ -288,3 +288,14 @@ body, #titlebar, #sidebar, #composer, .tool, .modal, .pop { transition: backgrou
 .ver-badge { position: fixed; inset-inline-end: 12px; bottom: 8px; z-index: 40; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 99px; font: 10.5px var(--mono); color: var(--muted); background: color-mix(in srgb, var(--raised) 85%, transparent); border: 1px solid var(--border-soft); opacity: .75; transition: opacity .15s, color .15s; }
 .ver-badge:hover { opacity: 1; color: var(--text); } .ver-badge[hidden] { display: none; }
 .ver-badge .vdot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; } .ver-badge.new { opacity: 1; color: var(--text); border-color: var(--accent); } .ver-badge.new .vdot { background: var(--accent); animation: updpulse 1.8s ease-in-out infinite; }
+
+/* slash palette, skills, expand button */
+#slash { position: absolute; bottom: 100%; inset-inline: 8px; margin-bottom: 6px; background: var(--raised); border: 1px solid var(--border); border-radius: var(--r); box-shadow: var(--shadow); padding: 4px; z-index: 30; max-height: 280px; overflow: auto; } #slash[hidden] { display: none; }
+#slash button { display: grid; grid-template-columns: auto auto auto 1fr; gap: 8px; align-items: center; width: 100%; padding: 6px 9px; border-radius: 6px; text-align: start; color: var(--text-2); } #slash button.on, #slash button:hover { background: var(--accent-soft); color: var(--text); }
+#slash code { font: 12px var(--mono); color: var(--accent); } #slash b { font-weight: 600; } #slash small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#btnExpand.busy { animation: updpulse 1s ease-in-out infinite; color: var(--accent); pointer-events: none; }
+.skill-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+.skill-card { background: var(--raised); border: 1px solid var(--border-soft); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 6px; } .skill-card:hover { border-color: var(--accent); }
+.sk-h { display: flex; align-items: center; gap: 8px; } .sk-h b { flex: 1; } .sk-h code { font: 11.5px var(--mono); color: var(--accent); } .sk-h em { font-size: 11px; color: var(--accent); font-style: normal; border: 1px solid var(--accent); border-radius: 99px; padding: 0 6px; }
+.skill-card p { margin: 0; font-size: 13px; color: var(--text-2); } .sk-ex { color: var(--muted); font-size: 12px; line-height: 1.5; } .skill-card .btn { align-self: flex-start; margin-top: auto; }
+.sk-foot { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }

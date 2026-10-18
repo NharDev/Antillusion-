@@ -25,7 +25,7 @@ function h(tag, props, ...kids) {
 const ICONS = {
   plus: "M12 5v14M5 12h14", x: "M6 6l12 12M18 6L6 18", up: "M12 19V5M5 12l7-7 7 7", folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z",
   clip: "M21 12.5l-8.5 8.5a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3", sliders: "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4",
-  download: "M12 3v12M7 11l5 5 5-5M4 20h16", refresh: "M20 11a8 8 0 00-14.9-3M4 4v4h4M4 13a8 8 0 0014.9 3M20 20v-4h-4", chart: "M4 20V10M10 20V4M16 20v-7M2 20h20", book: "M5 4h13a1 1 0 011 1v15H6.5A1.5 1.5 0 015 18.5zM5 18.5A1.5 1.5 0 016.5 17H19", branch: "M6 4v10M6 14a3 3 0 100 6 3 3 0 000-6zM18 4a3 3 0 100 6 3 3 0 000-6zM18 10c0 5-6 3-9 6",
+  film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M16 9h4M4 15h4M16 15h4", gamepad: "M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 00-3.9 3.1L1.5 14a3 3 0 005.3 2.4L8 15h8l1.2 1.4A3 3 0 0022.5 14l-1.3-5.9A4 4 0 0017.3 5z", sparkle: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z", download: "M12 3v12M7 11l5 5 5-5M4 20h16", refresh: "M20 11a8 8 0 00-14.9-3M4 4v4h4M4 13a8 8 0 0014.9 3M20 20v-4h-4", chart: "M4 20V10M10 20V4M16 20v-7M2 20h20", book: "M5 4h13a1 1 0 011 1v15H6.5A1.5 1.5 0 015 18.5zM5 18.5A1.5 1.5 0 016.5 17H19", branch: "M6 4v10M6 14a3 3 0 100 6 3 3 0 000-6zM18 4a3 3 0 100 6 3 3 0 000-6zM18 10c0 5-6 3-9 6",
   globe: "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18", reload: "M20 11a8 8 0 10-2.3 5.7M20 4v7h-7", back: "M15 6l-6 6 6 6", fwd: "M9 6l6 6-6 6",
   ext: "M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5", chev: "M6 9l6 6 6-6", check: "M5 12l5 5 9-10", term: "M4 6l6 6-6 6M12 18h8", file: "M6 3h8l4 4v14H6zM14 3v4h4",
   search: "M11 4a7 7 0 100 14 7 7 0 000-14zM21 21l-4.5-4.5", star: "M12 3l2.7 5.6 6.1.8-4.5 4.3 1.1 6.1L12 16.9 6.6 19.8l1.1-6.1L3.2 9.4l6.1-.8z", trash: "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13", undo: "M9 14L4 9l5-5M4 9h10a6 6 0 010 12h-3",
@@ -406,6 +406,7 @@ async function send() {
   const v = cur(), inp = $("#input"), text = inp.value.trim();
   if (v.running) return;
   if (!text && !v.atts.length) return;
+  if (/^\/expand(\s|$)/.test(text)) return expandPromptUI();
   if (text === "/compact") { inp.value = ""; return call("chat:compact", v.meta.id); }
   if (text === "/clear") { inp.value = ""; return clearChat(); }
   const sw = { "/plan": "plan", "/code": "agent", "/ask": "ask" }[text.split(/\s/)[0]];
@@ -420,6 +421,55 @@ async function clearChat() {
   const meta = await call("session:clear", v.meta.id); if (meta) { syncMeta(meta); v.log = []; renderAll(); }
 }
 async function addAttachments(list) { const v = cur(); for (const a of list) if (v.atts.length < 12) v.atts.push(a); renderAtts(); }
+
+/* ---------- slash commands, skills and prompt expansion ---------- */
+
+const BUILTIN_CMDS = [
+  { cmd: "expand", title: "حسّن البرومت", desc: "يحوّل فكرتك إلى مواصفات واضحة قبل التنفيذ" }, { cmd: "plan", title: "وضع الخطة", desc: "يستكشف ويضع خطة بلا أي تعديل" },
+  { cmd: "code", title: "وضع الكود", desc: "الوكيل ينفّذ ويكتب الملفات" }, { cmd: "ask", title: "وضع السؤال", desc: "إجابة بالقراءة فقط" },
+  { cmd: "compact", title: "ضغط السياق", desc: "يلخّص المحادثة لتوفير المساحة" }, { cmd: "clear", title: "مسح المحادثة", desc: "يبدأ من جديد" },
+];
+let slash = null;
+async function loadSkills() { S.skills = (await call("skills:list", S.active)) || []; }
+function updateSlash() {
+  const inp = $("#input"), box = $("#slash"), m = inp.value.match(/^\/([\w-]*)$/);
+  if (!m) { box.hidden = true; slash = null; return; }
+  const q = m[1].toLowerCase(), items = [...(S.skills || []).map((s) => ({ cmd: s.command, title: s.title, desc: s.description, skill: true, icon: s.icon })), ...BUILTIN_CMDS].filter((i) => i.cmd.startsWith(q));
+  if (!items.length) { box.hidden = true; slash = null; return; }
+  slash = { items, i: 0 }; drawSlash();
+}
+function drawSlash() {
+  const box = $("#slash"); box.hidden = false;
+  box.replaceChildren(...slash.items.map((it, i) => h("button", { class: i === slash.i ? "on" : "", onmousedown: (e) => { e.preventDefault(); slash.i = i; pickSlash(); } },
+    icoEl(it.skill ? it.icon || "bolt" : "term", 14), h("code", { dir: "ltr" }, "/" + it.cmd), h("b", null, it.title), h("small", null, it.desc))));
+}
+function pickSlash() { const inp = $("#input"), it = slash.items[slash.i]; inp.value = "/" + it.cmd + " "; slash = null; $("#slash").hidden = true; inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); autosize(); }
+
+async function expandPromptUI() {
+  const v = cur(), inp = $("#input"), btn = $("#btnExpand"), text = inp.value.trim().replace(/^\/expand\s*/, "");
+  if (!text) return toast("اكتب فكرتك أولاً ثم اضغط ✨");
+  if (!S.settings.hasKey) { toast("أضِف مفتاح API أولاً", "err"); return settingsModal(); }
+  if (btn.classList.contains("busy")) return;
+  btn.classList.add("busy"); inp.disabled = true;
+  const out = await call("prompt:expand", v.meta.id, text);
+  btn.classList.remove("busy"); inp.disabled = false;
+  if (out) { v.draftBeforeExpand = text; inp.value = out; autosize(); inp.focus(); toast("تم توسيع الفكرة — عدّلها كما تشاء ثم أرسل"); } else inp.focus();
+}
+
+async function skillsModal() {
+  const body = h("div", { class: "skills" }, h("div", { class: "muted" }, "جارٍ التحميل…")); modal("القدرات (Skills)", body, "wide");
+  await loadSkills(); const list = S.skills || [];
+  const use = (sk) => { document.querySelector(".modal-wrap")?.remove(); const inp = $("#input"); inp.value = "/" + sk.command + " " + (sk.example || ""); autosize(); inp.focus(); inp.setSelectionRange(("/" + sk.command + " ").length, inp.value.length); };
+  body.replaceChildren(
+    h("p", { class: "muted" }, "القدرة = خبرة جاهزة يفعّلها الوكيل تلقائياً عند فهم طلبك، أو تستدعيها بكتابة ", h("code", { dir: "ltr" }, "/"), " في المحادثة. كل قدرة تأتي بمنهج عمل ومراجع وقوالب جاهزة."),
+    h("div", { class: "skill-grid" }, list.map((sk) => h("div", { class: "skill-card" },
+      h("div", { class: "sk-h" }, icoEl(sk.icon || "bolt", 18), h("b", null, sk.title), h("code", { dir: "ltr" }, "/" + sk.command), sk.origin === "yours" ? h("em", null, "قدرتك") : null),
+      h("p", null, sk.description || ""),
+      sk.example ? h("small", { class: "sk-ex", dir: "auto" }, "مثال: " + sk.example) : null,
+      h("button", { class: "btn small primary", onclick: () => use(sk) }, "جرّب")))),
+    h("div", { class: "sk-foot" }, h("button", { class: "btn small", onclick: () => call("skills:openFolder") }, icoEl("folder", 13), " مجلد قدراتك"),
+      h("small", { class: "muted" }, "أنشئ ملف .md بترويسة (name, title, command, triggers, refs) ثم المنهج — يظهر هنا فوراً. يمكنك أيضاً وضع قدرات خاصة بمشروع داخل .antillusion/skills")));
+}
 
 /* @-mention of project files */
 let mention = null;
@@ -896,14 +946,14 @@ function applyTheme() { document.documentElement.dataset.theme = S.settings.them
 
 function wire() {
   const inp = $("#input");
-  $("#btnUsage").innerHTML = ico("chart"); $("#btnUpdate").innerHTML = ico("download"); $("#btnLibrary").innerHTML = ico("book"); $("#btnPanel").innerHTML = ico("panelR"); $("#btnAttach").innerHTML = ico("plus", 17);
+  $("#btnUsage").innerHTML = ico("chart"); $("#btnSkills").innerHTML = ico("bolt"); $("#btnExpand").innerHTML = ico("sparkle", 17); $("#btnUpdate").innerHTML = ico("download"); $("#btnLibrary").innerHTML = ico("book"); $("#btnPanel").innerHTML = ico("panelR"); $("#btnAttach").innerHTML = ico("plus", 17);
   $("#btnSide").innerHTML = ico("panel"); $("#btnBack").innerHTML = ico("arrowL"); $("#btnFwd").innerHTML = ico("arrowR"); $("#btnNewProject").innerHTML = ico("folderPlus", 15);
   $("#btnNew").replaceChildren(icoEl("plus", 16), "New Conversation"); $("#btnHistory").replaceChildren(icoEl("history", 16), "Conversation History"); $("#btnTasks").replaceChildren(icoEl("clock", 16), "Scheduled Tasks"); $("#btnSettings").replaceChildren(icoEl("gear", 16), "Settings");
   $("#btnTheme").onclick = async () => { S.settings = await call("settings:set", { theme: S.settings.theme === "light" ? "dark" : "light" }) || S.settings; applyTheme(); };
   $("#btnHistory").onclick = historyModal; $("#btnTasks").onclick = tasksModal; $("#btnBack").onclick = () => navGo(-1); $("#btnFwd").onclick = () => navGo(1);
   $("#btnSide").onclick = () => { const c = document.body.classList.toggle("noside"); store.set("noside", c); }; document.body.classList.toggle("noside", store.get("noside", false));
   $("#btnNewProject").onclick = async () => { const v = await newSession(); if (v) pickFolder(); };
-  $("#btnNew").onclick = () => newSession(); $("#btnUsage").onclick = usageModal; $("#btnUpdate").onclick = updateModal; $("#btnLibrary").onclick = libraryModal; $("#btnSettings").onclick = settingsModal; $("#btnPanel").onclick = () => setPanel(!P.open);
+  $("#btnNew").onclick = () => newSession(); $("#btnUsage").onclick = usageModal; $("#btnSkills").onclick = skillsModal; $("#btnExpand").onclick = expandPromptUI; $("#btnUpdate").onclick = updateModal; $("#btnLibrary").onclick = libraryModal; $("#btnSettings").onclick = settingsModal; $("#btnPanel").onclick = () => setPanel(!P.open);
   $("#btnSend").onclick = () => (cur().running ? call("chat:stop", S.active) : send());
   $("#btnAttach").onclick = async () => { const l = await call("attach:pick"); if (l) addAttachments(l); };
   $("#btnPerm").onclick = (e) => menu(e.currentTarget, [{ head: "صلاحيات الوكيل في هذه الجلسة" }, ...Object.entries(PERMS).map(([k, [label, sub]]) => ({ label, sub, checked: cur().meta.perm === k, icon: k === "auto" ? "bolt" : k === "edits" ? "edit" : "shield", onClick: () => patchSession({ perm: k }) }))]);
@@ -917,8 +967,13 @@ function wire() {
   });
   document.addEventListener("click", (e) => { const a = e.target.closest(".modal a[href]"); if (a) { e.preventDefault(); call("open:external", a.getAttribute("href")); } });
 
-  inp.addEventListener("input", () => { autosize(); updateMention(); });
+  inp.addEventListener("input", () => { autosize(); updateMention(); updateSlash(); });
   inp.addEventListener("keydown", (e) => {
+    if (slash) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); slash.i = (slash.i + (e.key === "ArrowDown" ? 1 : -1) + slash.items.length) % slash.items.length; return drawSlash(); }
+      if ((e.key === "Enter" || e.key === "Tab") && !e.shiftKey && !e.isComposing && !(e.key === "Enter" && inp.value.trim() === "/" + slash.items[slash.i].cmd && !slash.items[slash.i].skill)) { e.preventDefault(); return pickSlash(); }
+      if (e.key === "Escape") { slash = null; $("#slash").hidden = true; return; }
+    }
     if (mention) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); mention.i = (mention.i + (e.key === "ArrowDown" ? 1 : -1) + mention.files.length) % mention.files.length; return drawMention(); }
       if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); return pickMention(); }
@@ -958,5 +1013,5 @@ function wire() {
   const tabs = store.get("tabs", []).filter((id) => S.sess.has(id));
   if (!tabs.length) await newSession(); else { S.tabs = tabs; const active = store.get("active"); await openSession(tabs.includes(active) ? active : tabs[0]); }
   if (!S.settings.setupDone || b.forceSetup) setupWizard();
-  call("update:state").then((st) => st && onUpdateState(st)); drawVersionBadge(); pollQuota(); setInterval(pollQuota, 60000);
+  call("update:state").then((st) => st && onUpdateState(st)); drawVersionBadge(); loadSkills(); pollQuota(); setInterval(pollQuota, 60000);
 })();

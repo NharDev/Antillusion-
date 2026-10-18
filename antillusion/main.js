@@ -330,6 +330,9 @@ const H = {
   "worktree:create": worktreeCreate, "worktree:status": worktreeStatus, "worktree:merge": worktreeMerge, "worktree:remove": worktreeRemove,
   "servers:list": () => tools.serverList(), "servers:stop": (id) => tools.stopServer(id), "servers:logs": (id) => tools.serverLogs(id, 400),
   "usage:get": usageReport,
+  "skills:list": (id) => { const s = id && store.getSession(id); return require("./core/skills").list([path.join(store.dir, "skills"), s && path.join(s.cwd, ".antillusion", "skills")]); },
+  "skills:openFolder": () => { const d = path.join(store.dir, "skills"); fs.mkdirSync(d, { recursive: true }); return shell.openPath(d); },
+  "prompt:expand": (id, text) => agent.expandPrompt(id, text),
   "update:state": () => updateState, "update:check": () => checkUpdate(), "update:install": () => installUpdate(), "update:rollback": rollbackUpdate,
   "update:restart": () => { if (launchInstaller()) { setTimeout(() => app.exit(0), 500); return true; } app.relaunch(); app.exit(0); return true; },
   "app:version": async () => {

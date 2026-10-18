@@ -29,6 +29,10 @@ const DEFS = [
     parameters: P({ path: S("File path"), content: S("File content (this part)"), append: B("Append to the existing file instead of replacing it"), more: B("More parts will follow — skips the syntax check until the last part") }, ["path", "content"]) },
   { name: "edit_file", kind: "write", description: "Replace an exact string in a file. old_string must match the file exactly (including whitespace) and be unique unless replace_all is true. Include enough surrounding lines to make it unique.",
     parameters: P({ path: S("File path"), old_string: S("Exact text to replace"), new_string: S("Replacement text"), replace_all: B("Replace every occurrence") }, ["path", "old_string", "new_string"]) },
+  { name: "multi_edit", kind: "write", description: "Apply SEVERAL exact-string edits to ONE file in a single call (faster than repeated edit_file). Edits run in order against the evolving text; if any old_string is missing or ambiguous NOTHING is written and the failing edit is reported. Use it whenever you change 2+ places in the same file.",
+    parameters: P({ path: S("File path"), edits: { type: "array", minItems: 1, maxItems: 30, description: "Edits applied in order", items: P({ old_string: S("Exact text to replace"), new_string: S("Replacement text"), replace_all: B("Replace every occurrence") }, ["old_string", "new_string"]) } }, ["path", "edits"]) },
+  { name: "read_many", kind: "read", description: "Read up to 12 files (or line ranges) in ONE call — use it instead of several read_file calls when you need to look at multiple files.",
+    parameters: P({ files: { type: "array", minItems: 1, maxItems: 12, items: P({ path: S("File path"), offset: N("1-based first line"), limit: N("Max lines") }, ["path"]) } }, ["files"]) },
   { name: "list_dir", kind: "read", description: "List a directory (folders first, with file sizes). depth 2-3 gives a tree overview of a project.",
     parameters: P({ path: S("Directory, default workspace root"), depth: N("Tree depth 1-4 (default 1)") }) },
   { name: "glob", kind: "read", description: "Find files by glob pattern, e.g. **/*.ts, src/**/*.{js,jsx}, *.md. Heavy folders (node_modules, .git, dist…) are skipped.",
@@ -431,6 +435,39 @@ const impl = {
     await fsp.writeFile(fp, crlf ? next.replace(/\n/g, "\r\n") : next, "utf8");
     ctx.changed({ path: fp, before: raw, after: next, kind: "edit", oldS, newS });
     return withCheck(`Edited ${rel(ctx.cwd, fp)} (${a.replace_all ? count : 1} replacement${count > 1 && a.replace_all ? "s" : ""}).`, fp, next);
+  },
+
+  async multi_edit(a, ctx) {
+    const fp = resolveIn(ctx.cwd, a.path);
+    const raw = await fsp.readFile(fp, "utf8").catch(() => null);
+    if (raw === null) return `File not found: ${a.path}. Use write_file to create it.`;
+    if (!Array.isArray(a.edits) || !a.edits.length) return "edits must be a non-empty array of {old_string, new_string}.";
+    const crlf = raw.includes("\r\n");
+    let text = crlf ? raw.replace(/\r\n/g, "\n") : raw;
+    for (let i = 0; i < a.edits.length; i++) {
+      const e = a.edits[i] || {}, oldS = String(e.old_string == null ? "" : e.old_string).replace(/\r\n/g, "\n"), newS = String(e.new_string == null ? "" : e.new_string).replace(/\r\n/g, "\n");
+      const tag = `Edit ${i + 1}/${a.edits.length} failed — nothing was written.`;
+      if (!oldS) return `${tag} old_string is empty.`;
+      if (oldS === newS) return `${tag} old_string and new_string are identical.`;
+      const count = text.split(oldS).length - 1;
+      if (count === 0) {
+        const first = oldS.trim().split("\n")[0].trim(), hint = first ? text.split("\n").findIndex((l) => l.includes(first)) : -1;
+        return `${tag} old_string was not found (it must match exactly, including indentation; earlier edits in this call are already applied to the text it is matched against).` + (hint >= 0 ? ` A similar line is at line ${hint + 1} of the current text.` : "");
+      }
+      if (count > 1 && !e.replace_all) return `${tag} old_string occurs ${count} times — add surrounding lines to make it unique, or set replace_all.`;
+      text = e.replace_all ? text.split(oldS).join(newS) : text.replace(oldS, () => newS);
+    }
+    await fsp.writeFile(fp, crlf ? text.replace(/\n/g, "\r\n") : text, "utf8");
+    ctx.changed({ path: fp, before: raw, after: text, kind: "edit", oldS: a.edits.map((e) => e.old_string).join("\n…\n"), newS: a.edits.map((e) => e.new_string).join("\n…\n") });
+    return withCheck(`Applied ${a.edits.length} edits to ${rel(ctx.cwd, fp)}.`, fp, text);
+  },
+
+  async read_many(a, ctx) {
+    const list = (Array.isArray(a.files) ? a.files : []).slice(0, 12);
+    if (!list.length) return "files must be a non-empty array of {path, offset?, limit?}.";
+    const out = [];
+    for (const f of list) out.push(`===== ${f.path} =====\n` + (await impl.read_file(f, ctx)));
+    return out.join("\n\n");
   },
 
   async list_dir(a, ctx) {

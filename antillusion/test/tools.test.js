@@ -23,4 +23,17 @@ assert.ok(g("*.{js,ts}", "x.ts") && !g("*.{js,ts}", "x.py"));
 // tool registry
 assert.strictEqual(t.kindOf("run_command"), "exec");
 assert.ok(t.toolDefs(true, false).every((d) => t.kindOf(d.function.name) === "read"));
-(async () => { assert.match(await t.runTool("nope", {}, {}), /Unknown tool/); assert.match(await t.runTool("run_command", {}, {}), /Missing required/); console.log("PASS tools"); })();
+const fs = require("fs"), os = require("os");
+(async () => {
+  // multi_edit: atomic, ordered, CRLF-safe; read_many: several files in one call
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "tools-")), changes = [], ctx = { cwd: dir, changed: (c) => changes.push(c) };
+  fs.writeFileSync(path.join(dir, "a.txt"), "one\r\ntwo\r\nthree\r\n"); fs.writeFileSync(path.join(dir, "b.txt"), "bee\n");
+  const ok = await t.runTool("multi_edit", { path: "a.txt", edits: [{ old_string: "one", new_string: "1" }, { old_string: "1\ntwo", new_string: "1\n2" }, { old_string: "three", new_string: "3" }] }, ctx);
+  assert.match(ok, /Applied 3 edits/); assert.strictEqual(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "1\r\n2\r\n3\r\n"); assert.strictEqual(changes.length, 1);
+  const bad = await t.runTool("multi_edit", { path: "a.txt", edits: [{ old_string: "1", new_string: "X" }, { old_string: "missing", new_string: "Y" }] }, ctx);
+  assert.match(bad, /Edit 2\/2 failed/); assert.strictEqual(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "1\r\n2\r\n3\r\n", "nothing is written when any edit fails");
+  assert.match(await t.runTool("multi_edit", { path: "a.txt", edits: [{ old_string: "2", new_string: "two" }, { old_string: "r", new_string: "" }] }, ctx), /failed/);
+  const many = await t.runTool("read_many", { files: [{ path: "a.txt" }, { path: "b.txt", limit: 1 }, { path: "nope.txt" }] }, ctx);
+  assert.match(many, /===== a.txt =====[\s\S]*===== b.txt =====[\s\S]*bee[\s\S]*===== nope.txt =====/);
+  assert.ok(t.toolDefs(true, false).some((d) => d.function.name === "read_many") && !t.toolDefs(true, false).some((d) => d.function.name === "multi_edit"), "read-only modes get read_many but not multi_edit");
+  assert.match(await t.runTool("nope", {}, {}), /Unknown tool/); assert.match(await t.runTool("run_command", {}, {}), /Missing required/); console.log("PASS tools"); })();
