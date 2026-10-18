@@ -39,14 +39,14 @@ const step = (s) => console.log("\n== " + s);
   fs.rmSync(zip, { force: true });
   const sys32 = path.join(process.env.SystemRoot || "C:\\Windows", "System32");   // Windows' own bsdtar: the Git one cannot write zip
   run(path.join(sys32, "tar.exe"), ["-a", "-cf", zip, "-C", packed, "."]);
-  fs.copyFileSync(path.join(app, "installer", "setup.ps1"), path.join(setupDir, "setup.ps1"));
+  for (const f of ["setup.ps1", "AntiSetup.cs"]) fs.copyFileSync(path.join(app, "installer", f), path.join(setupDir, f));
 
   step("installer (IExpress) — a tiny bootstrapper: only setup.ps1 inside");
   const exe = path.join(setupDir, "Antillusion-Setup.exe"), sed = path.join(setupDir, "setup.sed");
   fs.rmSync(exe, { force: true });
   fs.writeFileSync(sed, ["[Version]", "Class=IEXPRESS", "SEDVersion=3", "[Options]", "PackagePurpose=InstallApp", "ShowInstallProgramWindow=1", "HideExtractAnimation=0", "UseLongFileName=1", "InsideCompressed=0", "CAB_FixedSize=0",
     "CAB_ResvCodeSigning=0", "RebootMode=N", "InstallPrompt=", "DisplayLicense=", "FinishMessage=", `TargetName=${exe}`, "FriendlyName=Antillusion Setup", "AppLaunched=powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File setup.ps1", "PostInstallCmd=<None>",
-    "AdminQuietInstCmd=", "UserQuietInstCmd=", "SourceFiles=SourceFiles", "[Strings]", 'FILE0="setup.ps1"', "[SourceFiles]", `SourceFiles0=${setupDir}\\`, "[SourceFiles0]", "%FILE0%=", ""].join("\r\n"));
+    "AdminQuietInstCmd=", "UserQuietInstCmd=", "SourceFiles=SourceFiles", "[Strings]", 'FILE0="setup.ps1"', 'FILE1="AntiSetup.cs"', "[SourceFiles]", `SourceFiles0=${setupDir}\\`, "[SourceFiles0]", "%FILE0%=", "%FILE1%=", ""].join("\r\n"));
   // a relative .sed run from its own folder: IExpress fails on an absolute path that contains spaces
   try { run(path.join(sys32, "iexpress.exe"), ["/N", "/Q", "setup.sed"], { cwd: setupDir }); } catch (e) { console.log("iexpress exit status", e.status, "— checking for the output file"); }
   for (let i = 0; i < 120 && !fs.existsSync(exe); i++) await new Promise((r) => setTimeout(r, 1000));   // iexpress returns before the file is closed
