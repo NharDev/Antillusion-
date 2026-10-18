@@ -44,8 +44,9 @@ jobs:
           }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "Antillusion.lnk"))) { throw "desktop shortcut missing" }
           Write-Host "app installed; waiting for the background finishers (Node.js, Git)"
-          $deadline = (Get-Date).AddMinutes(5)
-          while ((Get-Date) -lt $deadline -and -not ((Test-Path (Join-Path $dir "runtime\node\node.exe")) -and (Test-Path (Join-Path $dir "runtime\git\cmd\git.exe")))) { Start-Sleep -Seconds 3 }
+          # the flag file is what the app waits on too: git.exe appears early while the 7z archive is still extracting
+          $deadline = (Get-Date).AddMinutes(6)
+          while ((Get-Date) -lt $deadline -and ((Test-Path (Join-Path $dir "runtime\git.installing")) -or -not (Test-Path (Join-Path $dir "runtime\node\node.exe")))) { Start-Sleep -Seconds 3 }
           foreach ($p in @("runtime\node\node.exe", "runtime\git\cmd\git.exe")) { if (-not (Test-Path (Join-Path $dir $p))) { Get-Content (Join-Path $dir "runtime\setup-*.log") -ErrorAction SilentlyContinue; throw "background install missing: $p" } }
           & (Join-Path $dir "runtime\node\node.exe") -v
           & (Join-Path $dir "runtime\git\cmd\git.exe") --version
