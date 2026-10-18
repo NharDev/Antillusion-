@@ -25,6 +25,9 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run test:unit
       - run: node build/build.js
+      - name: Update manifest (latest.json)
+        shell: bash
+        run: node -e "const fs=require('fs');const bi=JSON.parse(fs.readFileSync('build-info.json','utf8'));const size=fs.statSync('../antillusion-setup/Antillusion-Setup.exe').size;fs.writeFileSync('../antillusion-setup/latest.json',JSON.stringify({version:bi.version,commit:bi.commit,channel:bi.channel,builtAt:bi.builtAt,setup:'Antillusion-Setup.exe',size}));console.log(fs.readFileSync('../antillusion-setup/latest.json','utf8'))"
       - name: Installer sizes
         shell: pwsh
         run: Get-ChildItem ../antillusion-setup -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,2)}}
@@ -69,7 +72,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release delete dev-build --cleanup-tag --yes || true
-          gh release create dev-build ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip "$RUNNER_TEMP"/preview/*.png \
+          gh release create dev-build ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip ../antillusion-setup/latest.json "$RUNNER_TEMP"/preview/*.png \
             --prerelease --target "${{ github.sha }}" --title "Antillusion dev build" \
             --notes "Latest build of branch ${{ github.ref_name }}. Download Antillusion-Setup.exe (tiny; it downloads the rest).
 
@@ -82,4 +85,4 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip --title "Antillusion ${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip ../antillusion-setup/latest.json --title "Antillusion ${{ github.ref_name }}" --generate-notes

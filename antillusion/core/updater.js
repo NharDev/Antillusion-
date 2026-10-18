@@ -40,6 +40,18 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
     const base = await info(), checkedAt = Date.now();
     if (base.mode === "release") {
       let info = {}; try { info = JSON.parse(fs.readFileSync(path.join(appDir, "build-info.json"), "utf8")); } catch {}
+      // 1) latest.json attached to the release: a plain file download (CDN), so no GitHub API rate limit (60/h per IP, often hit on shared networks)
+      const dev = info.channel === "dev", base2 = `https://github.com/${repo}/releases/${dev ? "download/dev-build" : "latest/download"}`;
+      try {
+        const r = await fetchImpl(`${base2}/latest.json`, { headers: { "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(10000) });
+        if (r.ok) {
+          const m = await r.json(), sha = String(m.commit || "").toLowerCase(), mine = String(info.commit || "").toLowerCase();
+          const available = dev ? !!(sha && mine && sha !== mine) : newer(m.version, base.version);
+          return { ...base, checkedAt, channel: dev ? "dev" : "stable", head: mine.slice(0, 7), latest: m.version ? "v" + m.version : sha.slice(0, 7), latestVersion: m.version || "", available,
+            url: `${base2}/${m.setup || "Antillusion-Setup.exe"}`, size: m.size || 0, page: `https://github.com/${repo}/releases/${dev ? "tag/dev-build" : "latest"}`, notes: String(m.notes || "").slice(0, 1500) };
+        }
+      } catch (e) { if (e && e.name === "AbortError") throw e; }
+      // 2) fallback: the GitHub API (older releases have no latest.json)
       if (info.channel === "dev") {   // dev builds are published under one rolling "dev-build" prerelease whose body names the commit
         const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/tags/dev-build`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(10000) });
         if (res.status === 404) return { ...base, checkedAt, channel: "dev", head: String(info.commit || "").slice(0, 7), available: false, note: "لا يوجد بناء تجريبي منشور بعد" };

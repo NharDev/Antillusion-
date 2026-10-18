@@ -12,7 +12,7 @@ const { createUpdater } = require("../core/updater");
   fs.writeFileSync(path.join(dir, "package.json"), '{"version":"1.0.0"}');
   fs.writeFileSync(path.join(dir, "build-info.json"), JSON.stringify({ channel: "dev", commit: "0".repeat(40) }));
   const u = createUpdater({ appDir: dir, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }) });
-  const st = await u.check();
+  let st; for (let i = 0; i < 6; i++) { try { st = await u.check(); if (st.available) break; } catch (e) { if (i === 5) throw e; } await new Promise((r) => setTimeout(r, 5000)); }   // the fresh release can take a few seconds to appear
   console.log("check:", { mode: st.mode, channel: st.channel, available: st.available, latest: st.latest, url: st.url, size: st.size });
   assert.strictEqual(st.mode, "release"); assert.strictEqual(st.available, true, "an old dev build must see the update"); assert.ok(st.url && st.size > 50000);
   const r = await u.downloadInstaller(st.url, path.join(dir, "Setup.exe"), st.size);

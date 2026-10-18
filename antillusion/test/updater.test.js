@@ -48,7 +48,7 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
   // outside any checkout → release mode, driven by a stub GitHub API
   const plain = fs.mkdtempSync(path.join(os.tmpdir(), "plain-")); fs.writeFileSync(path.join(plain, "package.json"), '{"version":"1.0.0"}');
   const rel = createUpdater({ appDir: plain, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }),
-    fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v1.2.0", html_url: "https://x/r", body: "notes", assets: [{ name: "Antillusion-Setup.exe", browser_download_url: "https://x/s.exe" }] }) }) });
+    fetchImpl: async (url) => /latest\.json$/.test(url) ? { ok: false, status: 404 } : ({ ok: true, status: 200, json: async () => ({ tag_name: "v1.2.0", html_url: "https://x/r", body: "notes", assets: [{ name: "Antillusion-Setup.exe", browser_download_url: "https://x/s.exe" }] }) }) });
   assert.strictEqual((await rel.info()).version, "1.0.0");
   fs.writeFileSync(path.join(plain, "build-info.json"), JSON.stringify({ version: "1.1.42", channel: "stable" })); assert.strictEqual((await rel.info()).version, "1.1.42", "installed copy: version comes from build-info");
   fs.rmSync(path.join(plain, "build-info.json"));
@@ -56,7 +56,7 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
   assert.strictEqual(rs.mode, "release"); assert.strictEqual(rs.available, true); assert.strictEqual(rs.url, "https://x/s.exe");
   // dev channel: compares the commit recorded in build-info.json with the one named in the dev-build prerelease
   fs.writeFileSync(path.join(plain, "build-info.json"), JSON.stringify({ channel: "dev", commit: "a".repeat(40) }));
-  const devApi = (sha) => async () => ({ ok: true, status: 200, json: async () => ({ body: "Rolling build\ncommit: " + sha, html_url: "https://x/dev", assets: [{ name: "Antillusion-Setup.exe", browser_download_url: "https://x/dev.exe" }] }) });
+  const devApi = (sha) => async (url) => /latest\.json$/.test(url) ? { ok: false, status: 404 } : ({ ok: true, status: 200, json: async () => ({ body: "Rolling build\ncommit: " + sha, html_url: "https://x/dev", assets: [{ name: "Antillusion-Setup.exe", browser_download_url: "https://x/dev.exe" }] }) });
   const mk = (sha) => createUpdater({ appDir: plain, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }), fetchImpl: devApi(sha) });
   assert.strictEqual((await mk("b".repeat(40)).check()).available, true);
   assert.strictEqual((await mk("a".repeat(40)).check()).available, false);
@@ -69,5 +69,14 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
   await assert.rejects(mkDl(Buffer.alloc(60000, 2)).downloadInstaller("https://github.com/x/y/s.exe", dl), /غير صالح/);
   await assert.rejects(mkDl(exe).downloadInstaller("https://github.com/x/y/s.exe", dl, exe.length + 1), /حجم/);
   await assert.rejects(mkDl(exe, false).downloadInstaller("https://github.com/x/y/s.exe", dl), /HTTP 500/);
+  // preferred path: latest.json from the release download URL (no API, no rate limit)
+  const man = (m) => createUpdater({ appDir: plain, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }),
+    fetchImpl: async (url) => { if (/api\.github\.com/.test(url)) throw new Error("API must not be called when latest.json exists"); return { ok: true, status: 200, json: async () => m }; } });
+  let ms = await man({ version: "1.1.50", commit: "b".repeat(40), size: 196608 }).check();
+  assert.strictEqual(ms.available, true); assert.match(ms.url, /releases\/download\/dev-build\/Antillusion-Setup\.exe$/); assert.strictEqual(ms.size, 196608); assert.strictEqual(ms.latest, "v1.1.50");
+  assert.strictEqual((await man({ version: "1.1.50", commit: "a".repeat(40) }).check()).available, false, "same commit = up to date");
+  fs.writeFileSync(path.join(plain, "build-info.json"), JSON.stringify({ channel: "stable", version: "1.1.40" }));
+  ms = await man({ version: "1.1.41" }).check(); assert.strictEqual(ms.available, true); assert.match(ms.url, /releases\/latest\/download\/Antillusion-Setup\.exe$/);
+  assert.strictEqual((await man({ version: "1.1.40" }).check()).available, false);
   console.log("PASS updater");
 })().catch((e) => { console.error(e); process.exit(1); });
