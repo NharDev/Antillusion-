@@ -13,9 +13,12 @@ const newer = (a, b) => { const x = semver(a), y = semver(b); for (let i = 0; i 
 
 function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.fetch }) {
   const pkg = () => { try { return JSON.parse(fs.readFileSync(path.join(appDir, "package.json"), "utf8")); } catch { return {}; } };
-  let top = null;   // git top-level folder, or "" when the app is not inside a checkout
+  let top = null, prefix = "";   // git top-level folder ("" when the app is not inside a checkout) and the app's folder inside it, e.g. "antillusion/"
   const root = async () => {
-    if (top === null) { const r = await git(appDir, "rev-parse", "--show-toplevel"); top = r.ok ? r.out : ""; }
+    if (top === null) {
+      const r = await git(appDir, "rev-parse", "--show-toplevel"); top = r.ok ? r.out : "";
+      if (top) { const p = await git(appDir, "rev-parse", "--show-prefix"); prefix = p.ok ? p.out.replace(/\\/g, "/") : ""; }   // asked of git itself: comparing paths breaks on 8.3 names and symlinks
+    }
     return top;
   };
 
@@ -44,10 +47,10 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
       git(r, "rev-list", "--count", `HEAD..${remote}`), git(r, "rev-list", "--count", `${remote}..HEAD`),
       git(r, "log", "-n", "30", "--pretty=format:%h|%s|%an|%cr", `HEAD..${remote}`), git(r, "diff", "--name-only", "HEAD", remote),
       git(r, "status", "--porcelain", "--untracked-files=no"), git(r, "rev-parse", "--short", remote)]);
-    const changed = files.ok ? files.out.split("\n").filter(Boolean) : [], rel = path.relative(r, appDir).replace(/\\/g, "/");
+    const changed = files.ok ? files.out.split("\n").filter(Boolean) : [];
     const n = parseInt(behind.out, 10) || 0;
     return { ...base, checkedAt, branch, remoteBranch: remote, latest: rhead.ok ? rhead.out : "", behind: n, ahead: parseInt(ahead.out, 10) || 0, available: n > 0,
-      dirty: dirty.ok && !!dirty.out, files: changed.length, needsInstall: changed.some((x) => x === (rel ? rel + "/" : "") + "package.json" || x === (rel ? rel + "/" : "") + "package-lock.json"),
+      dirty: dirty.ok && !!dirty.out, files: changed.length, needsInstall: changed.some((x) => x === prefix + "package.json" || x === prefix + "package-lock.json"),
       commits: log.ok ? log.out.split("\n").filter(Boolean).map((l) => { const [sha, subject, author, when] = l.split("|"); return { sha, subject, author, when }; }) : [] };
   }
 
@@ -75,7 +78,7 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
     const dirty = await git(r, "status", "--porcelain", "--untracked-files=no");
     if (dirty.ok && dirty.out) throw new Error("توجد تعديلات محلية غير محفوظة — احفظها أو تراجع عنها أولاً");
     if (!(await git(r, "merge-base", "--is-ancestor", sha, "HEAD")).ok) throw new Error("النسخة السابقة ليست ضمن تاريخ المشروع الحالي");
-    const rel = path.relative(r, appDir).replace(/\\/g, "/"), pre = rel ? rel + "/" : "";
+    const pre = prefix;
     const files = await git(r, "diff", "--name-only", sha, "HEAD"), needsInstall = files.ok && files.out.split("\n").some((x) => x === pre + "package.json" || x === pre + "package-lock.json");
     const m = await git(r, "reset", "--hard", sha);
     if (!m.ok) throw new Error("فشل التراجع: " + (m.err || m.out).split("\n")[0]);
