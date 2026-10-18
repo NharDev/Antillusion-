@@ -131,12 +131,18 @@ $work = {
     else {
       try {
         Step 75 "Looking up Git" "Looking up the latest Git for Windows"
-        $api = Invoke-RestMethod -Uri "https://api.github.com/repos/git-for-windows/git/releases/latest" -UseBasicParsing -Headers @{ "User-Agent" = "Antillusion-Setup" }
-        $asset = $api.assets | Where-Object { $_.name -match "^PortableGit-.*-64-bit\.7z\.exe$" } | Select-Object -First 1
-        if (-not $asset) { throw "no PortableGit asset in the latest release" }
+        # No API call (unauthenticated API requests are rate-limited per IP and answer 403): read the redirect of /releases/latest instead
+        $tag = $null
+        try {
+          $req = [Net.HttpWebRequest]::Create("https://github.com/git-for-windows/git/releases/latest"); $req.AllowAutoRedirect = $false; $req.UserAgent = "Antillusion-Setup"; $req.Timeout = 15000
+          $res = $req.GetResponse(); $loc = $res.Headers["Location"]; $res.Close()
+          if ($loc -match "/tag/(v[0-9][^/]*)$") { $tag = $Matches[1] }
+        } catch { Log "Could not look up the latest Git release: $($_.Exception.Message)" }
+        if (-not $tag) { $tag = "v2.47.1.windows.1"; Log "Using Git $tag" }
+        $num = ($tag -replace "^v", "") -replace "\.windows\.1$", "" -replace "\.windows\.", "."   # v2.56.0.windows.2 -> 2.56.0.2, v2.47.1.windows.1 -> 2.47.1
+        $asset = @{ name = "PortableGit-$num-64-bit.7z.exe"; browser_download_url = "https://github.com/git-for-windows/git/releases/download/$tag/PortableGit-$num-64-bit.7z.exe"; digest = $null }
         $pg = Join-Path $env:TEMP $asset.name
         Download $asset.browser_download_url $pg 75 82 "Downloading Git"
-        if ($asset.digest -and $asset.digest -like "sha256:*" -and (Sha256 $pg) -ne $asset.digest.Substring(7).ToLower()) { throw "Git download is corrupt (checksum mismatch)" }
         $gitDir = Join-Path $rt "git"; if (Test-Path $gitDir) { Remove-Item -Recurse -Force $gitDir }
         Step 83 "Installing Git" "Unpacking Git"
         $p = Start-Process -FilePath $pg -ArgumentList @("-o", "`"$gitDir`"", "-y") -PassThru -WindowStyle Hidden
