@@ -13,10 +13,16 @@ const library = require("./core/library");
 const { createUpdater } = require("./core/updater");
 
 app.setName("Antillusion");
-// the installer drops Node and Git under <install>/runtime; Explorer-launched apps may not see the updated user PATH yet
-for (const d of [path.join(path.dirname(process.execPath), "runtime", "node"), path.join(path.dirname(process.execPath), "runtime", "git", "cmd")]) {
-  if (fs.existsSync(d) && !(process.env.PATH || "").split(path.delimiter).includes(d)) process.env.PATH = d + path.delimiter + (process.env.PATH || "");
+// the installer drops Node and Git under <install>/runtime (Node/Git/OmniRoute finish in the background after Setup closes);
+// Explorer-launched apps may not see the updated user PATH, so add those folders ourselves, again whenever they appear
+const RUNTIME = path.join(path.dirname(process.execPath), "runtime");
+function refreshRuntimePath() {
+  for (const d of [path.join(RUNTIME, "node"), path.join(RUNTIME, "git", "cmd")]) {
+    if (fs.existsSync(d) && !(process.env.PATH || "").split(path.delimiter).includes(d)) process.env.PATH = d + path.delimiter + (process.env.PATH || "");
+  }
 }
+const runtimeBusy = () => ["node.installing", "git.installing"].some((f) => fs.existsSync(path.join(RUNTIME, f)));
+refreshRuntimePath();
 if (process.env.ANTILLUSION_DATA) app.setPath("userData", process.env.ANTILLUSION_DATA);
 const SELFTEST = !!(process.env.ANTILLUSION_SELFTEST || process.env.ANTILLUSION_SHOT);
 if (!SELFTEST && !app.requestSingleInstanceLock()) app.quit();
@@ -67,13 +73,14 @@ async function ensureLocalRouter() {
   if (await up()) return true;
   if (!routerStarting) routerStarting = (async () => {
     const cli = path.join(process.env.APPDATA || "", "npm", "node_modules", "omniroute", "bin", "omniroute.mjs");
-    // Setup installs OmniRoute in the background (it is a few hundred MB); wait for it up to 15 minutes
-    const flag = path.join(path.dirname(process.execPath), "runtime", "omniroute.installing");
+    // Setup finishes Node.js + OmniRoute in the background (OmniRoute is a few hundred MB); wait for it up to 15 minutes
+    const flag = path.join(RUNTIME, "node.installing");
     if (!fs.existsSync(cli) && fs.existsSync(flag)) { send({ t: "router", state: "installing" }); for (let i = 0; i < 450 && !fs.existsSync(cli) && fs.existsSync(flag); i++) await new Promise((r) => setTimeout(r, 2000)); }
+    refreshRuntimePath();
     if (!fs.existsSync(cli)) return false;
     const env = { ...process.env, OMNIROUTE_SERVER_HOST: "127.0.0.1" };
     delete env.ELECTRON_RUN_AS_NODE;
-    try { const p = spawn(process.env.ANTILLUSION_NODE || "node", [cli, "serve", "--port", "20128", "--no-open", "--no-tray"], { detached: true, stdio: "ignore", windowsHide: true, env }); p.on("error", () => {}); p.unref(); } catch { return false; }
+    try { const p = spawn(process.env.ANTILLUSION_NODE || (fs.existsSync(path.join(RUNTIME, "node", "node.exe")) ? path.join(RUNTIME, "node", "node.exe") : "node"), [cli, "serve", "--port", "20128", "--no-open", "--no-tray"], { detached: true, stdio: "ignore", windowsHide: true, env }); p.on("error", () => {}); p.unref(); } catch { return false; }
     for (let i = 0; i < 45; i++) { await new Promise((r) => setTimeout(r, 2000)); if (await up()) return true; }
     return false;
   })().finally(() => { routerStarting = null; });
@@ -324,7 +331,12 @@ const H = {
   "servers:list": () => tools.serverList(), "servers:stop": (id) => tools.stopServer(id), "servers:logs": (id) => tools.serverLogs(id, 400),
   "usage:get": usageReport,
   "update:state": () => updateState, "update:check": () => checkUpdate(), "update:install": () => installUpdate(), "update:rollback": rollbackUpdate,
-  "update:restart": () => { app.relaunch(); app.exit(0); return true; },
+  "update:restart": () => { if (launchInstaller()) { setTimeout(() => app.exit(0), 500); return true; } app.relaunch(); app.exit(0); return true; },
+  "app:version": async () => {
+    let bi = {}; try { bi = JSON.parse(fs.readFileSync(path.join(__dirname, "build-info.json"), "utf8")); } catch {}
+    const i = updater ? await updater.info() : {};
+    return { version: i.version || "", mode: i.mode, branch: i.branch || "", commit: String(i.head || bi.commit || "").slice(0, 7), run: bi.run || "", channel: bi.channel || (i.mode === "git" ? "git" : "stable"), builtAt: bi.builtAt || "" };
+  },
   "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; await ensureLocalRouter(); try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
   "library:read": (cardId, id) => { const s = id && store.getSession(id); return library.read(cardId, [store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
@@ -371,33 +383,37 @@ const setUpdate = (patch) => { updateState = { ...updateState, ...patch }; send(
 const branchPref = () => store.settings().updateBranch || "";
 async function checkUpdate({ auto } = {}) {
   if (SELFTEST) return updateState;
-  if (updateState.phase === "checking" || updateState.phase === "installing") return updateState;
+  if (["checking", "installing", "ready"].includes(updateState.phase)) return updateState;   // "ready" = installed, waiting for the restart
   setUpdate({ phase: "checking", error: null });
   try {
     const st = await updater.check(branchPref());
     setUpdate({ ...st, phase: st.available ? "available" : "uptodate", error: null });
-    if (auto && st.available && st.mode === "git" && store.settings().autoUpdate !== false && !st.dirty && !st.ahead && !agent.anyRunning()) return installUpdate();
+    if (auto && st.available && store.settings().autoUpdate !== false && !agent.anyRunning() && (st.mode === "release" ? !!st.url : !st.dirty && !st.ahead)) return installUpdate();
   } catch (e) { setUpdate({ phase: "error", error: e.message }); }
   return updateState;
 }
 async function installUpdate() {
   if (updateState.phase === "installing") return updateState;
   setUpdate({ phase: "installing", error: null });
-  if (updateState.mode === "release") {   // installed copy: download the new Setup.exe, run it and quit; the installer restarts the app
+  if (updateState.mode === "release") {   // installed copy: fetch the new (tiny) Setup.exe now, run it when the app restarts or quits
     try {
       if (!updateState.url) throw new Error("لا يوجد ملف مثبّت في آخر إصدار");
-      const res = await fetch(updateState.url, { headers: { "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(600000) });
-      if (!res.ok) throw new Error("فشل تنزيل المثبّت: HTTP " + res.status);
-      const file = path.join(app.getPath("temp"), "Antillusion-Setup-update.exe");
-      fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
-      spawn(file, [], { detached: true, stdio: "ignore" }).unref();
-      setTimeout(() => app.exit(0), 600);
-      return setUpdate({ phase: "installing", note: "تم تنزيل المثبّت — سيُغلق التطبيق ويُعاد فتحه بعد التثبيت" });
+      const r = await updater.downloadInstaller(updateState.url, path.join(app.getPath("temp"), "Antillusion-Setup-update.exe"), updateState.size);
+      return setUpdate({ phase: "ready", installerFile: r.file, applied: updateState.commits || [], error: null });
     } catch (e) { return setUpdate({ phase: "error", error: e.message }); }
   }
   try { const r = await updater.apply(branchPref()); if (r.updated && r.previous) store.setSettings({ prevHead: r.previous }); setUpdate({ ...r, phase: r.updated ? "ready" : "uptodate" }); }
   catch (e) { setUpdate({ phase: "error", error: e.message }); }
   return updateState;
+}
+
+let installerStarted = false;
+function launchInstaller() {
+  const f = updateState.installerFile;
+  if (installerStarted || !f || !fs.existsSync(f)) return false;
+  installerStarted = true;
+  spawn(f, [], { detached: true, stdio: "ignore" }).unref();
+  return true;
 }
 
 async function rollbackUpdate() {
@@ -465,9 +481,12 @@ app.whenReady().then(() => {
   for (const [ch, fn] of Object.entries(H)) ipcMain.handle(ch, async (e, ...args) => { try { return await fn(...args); } catch (err) { return { __error: err.message || String(err) }; } });
   updater = createUpdater({ appDir: __dirname, git: (cwd, ...a) => git(cwd, ...a), npm: npmInstall });
   createWindow();
+  setInterval(refreshRuntimePath, 5000);   // Node/Git can finish installing while the app is already open
   if (!SELFTEST) { setInterval(tickTasks, 30000); setTimeout(() => checkUpdate({ auto: true }), 8000); setInterval(() => checkUpdate({ auto: true }), 3 * 3600e3); }
 });
 
 app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.on("window-all-closed", () => app.quit());
+// an update downloaded for an installed copy is applied when the app closes
+app.on("will-quit", () => { if (updateState.phase === "ready" && updateState.installerFile && store && store.settings().autoUpdate !== false) launchInstaller(); });
 app.on("before-quit", () => { try { tools.stopAllServers(); store && store.flush(); } catch {} });

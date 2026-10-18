@@ -283,3 +283,8 @@ body, #titlebar, #sidebar, #composer, .tool, .modal, .pop { transition: backgrou
 .upd-notes { white-space: pre-wrap; background: var(--raised); border-radius: 10px; padding: 10px 12px; font-size: 12.5px; max-height: 200px; overflow: auto; }
 .upd-banner { position: fixed; bottom: 18px; inset-inline-start: 50%; transform: translateX(-50%); z-index: 9999; display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 14px; background: var(--raised); border: 1px solid var(--accent); box-shadow: 0 10px 40px #0008; font-size: 14px; }
 .qraw { margin-top: 8px; font-size: 12px; color: var(--muted); } .qraw pre { background: var(--raised); border-radius: 10px; padding: 10px; max-height: 220px; overflow: auto; color: var(--text-2); font: 11px var(--mono); }
+
+/* version badge (bottom corner) */
+.ver-badge { position: fixed; inset-inline-end: 12px; bottom: 8px; z-index: 40; display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 99px; font: 10.5px var(--mono); color: var(--muted); background: color-mix(in srgb, var(--raised) 85%, transparent); border: 1px solid var(--border-soft); opacity: .75; transition: opacity .15s, color .15s; }
+.ver-badge:hover { opacity: 1; color: var(--text); } .ver-badge[hidden] { display: none; }
+.ver-badge .vdot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; } .ver-badge.new { opacity: 1; color: var(--text); border-color: var(--accent); } .ver-badge.new .vdot { background: var(--accent); animation: updpulse 1.8s ease-in-out infinite; }

@@ -674,8 +674,20 @@ async function pollQuota() {
 /* ---------- updates (GitHub) ---------- */
 
 const U = { st: { phase: "idle" }, listeners: new Set() };
+/** Bottom-corner badge with the exact build that is running; refreshed after every update/restart. */
+async function drawVersionBadge() {
+  const v = await call("app:version"), b = $("#verBadge"); if (!v || !b) return;
+  const parts = ["v" + (v.version || "?")]; if (v.run) parts.push("#" + v.run); if (v.commit) parts.push(v.commit);
+  const tag = v.channel === "dev" ? "dev" : v.mode === "git" ? v.branch : "";
+  b.replaceChildren(h("i", { class: "vdot" }), h("span", { dir: "ltr" }, parts.join(" · ") + (tag ? " · " + tag : "")));
+  b.title = `Antillusion ${parts.join(" ")}${v.builtAt ? "\nبُنيت: " + new Date(v.builtAt).toLocaleString("ar") : ""}\nاضغط لفتح التحديثات`;
+  b.hidden = false; b.onclick = updateModal;
+  const key = parts.join("|"), seen = S.settings.lastVersionKey;
+  if (seen !== key) { if (seen) toast(`تم تحديث Antillusion إلى ${parts.join(" · ")}`); const r = await call("settings:set", { lastVersionKey: key }); if (r) S.settings = r; }
+}
 function onUpdateState(st) {
   const prev = U.st.phase; U.st = st;
+  const vb = $("#verBadge"); if (vb) vb.classList.toggle("new", st.phase === "available" || st.phase === "ready");
   const b = $("#btnUpdate"); if (b) { b.classList.toggle("has-update", st.phase === "available" || st.phase === "ready"); b.title = st.phase === "ready" ? "تم التحديث — أعد التشغيل" : st.phase === "available" ? "يتوفر تحديث جديد" : "التحديثات"; }
   U.listeners.forEach((fn) => fn(st));
   if (st.phase === "ready" && prev !== "ready") showUpdateBanner(st);
@@ -703,7 +715,7 @@ async function updateModal() {
       h("div", { class: "upd-actions" },
         st.phase === "ready" ? h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل") :
         st.available && st.mode === "git" ? h("button", { class: "btn primary", disabled: busy || st.dirty || st.ahead > 0, onclick: () => call("update:install") }, busy ? "جارٍ التحديث…" : "حدّث الآن") :
-        st.available && st.url ? h("button", { class: "btn primary", disabled: busy, onclick: () => call("update:install") }, busy ? "جارٍ التنزيل…" : "نزّل وثبّت التحديث") : null,
+        st.available && st.url ? h("button", { class: "btn primary", disabled: busy, onclick: () => call("update:install") }, busy ? "جارٍ التنزيل…" : "نزّل التحديث") : null,
         h("button", { class: "btn", disabled: busy, onclick: () => call("update:check") }, busy ? "…" : "افحص الآن"),
         S.settings.prevHead && st.mode === "git" ? h("button", { class: "btn", disabled: busy, title: "العودة إلى النسخة التي كنت عليها قبل آخر تحديث", onclick: async () => { if (await ask("التراجع عن آخر تحديث؟", { input: false, ok: "تراجع", danger: true, note: "سيعود الكود إلى النسخة السابقة ويُوقَف التحديث التلقائي. أعد تشغيل التطبيق بعدها." })) { const r = await call("update:rollback"); if (r) { const ns = await call("settings:set", {}); if (ns) S.settings = ns; } } } }, "تراجع") : null));
     const parts = [hero];
@@ -946,5 +958,5 @@ function wire() {
   const tabs = store.get("tabs", []).filter((id) => S.sess.has(id));
   if (!tabs.length) await newSession(); else { S.tabs = tabs; const active = store.get("active"); await openSession(tabs.includes(active) ? active : tabs[0]); }
   if (!S.settings.setupDone || b.forceSetup) setupWizard();
-  call("update:state").then((st) => st && onUpdateState(st)); pollQuota(); setInterval(pollQuota, 60000);
+  call("update:state").then((st) => st && onUpdateState(st)); drawVersionBadge(); pollQuota(); setInterval(pollQuota, 60000);
 })();

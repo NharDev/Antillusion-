@@ -23,7 +23,7 @@ const step = (s) => console.log("\n== " + s);
   else run(electron, [path.join(__dirname, "make-icon.js")], { env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "ELECTRON_RUN_AS_NODE")) });
 
   // tells the installed app which channel/commit it is, so the in-app updater knows what "newer" means
-  fs.writeFileSync(path.join(app, "build-info.json"), JSON.stringify({ channel: process.env.BUILD_CHANNEL || "stable", commit: process.env.GITHUB_SHA || "", builtAt: new Date().toISOString() }));
+  fs.writeFileSync(path.join(app, "build-info.json"), JSON.stringify({ channel: process.env.BUILD_CHANNEL || "stable", commit: process.env.GITHUB_SHA || "", run: process.env.GITHUB_RUN_NUMBER || "", builtAt: new Date().toISOString() }));
 
   step(`package (Electron ${version})`);
   const { packager } = await import(require("url").pathToFileURL(path.join(tools, "@electron", "packager", "dist", "index.js")).href);   // ESM-only package
@@ -32,6 +32,10 @@ const step = (s) => console.log("\n== " + s);
     icon: path.join(app, "icon.ico"), appCopyright: "Antillusion", win32metadata: { CompanyName: "Antillusion", FileDescription: "Antillusion", ProductName: "Antillusion" },
     ignore: [/^\/test($|\/)/, /^\/build($|\/)/, /^\/installer($|\/)/, /^\/model($|\/)/,/^\/node_modules($|\/)/, /^\/\.env/, /\.bat$/, /^\/package-lock\.json$/],
   });
+
+  // Chromium ships ~55 UI languages; Antillusion only needs Arabic and English (saves ~35 MB unpacked, faster download and unpack)
+  const loc = path.join(packed, "locales");
+  if (fs.existsSync(loc)) for (const f of fs.readdirSync(loc)) if (!/^(en-US|ar)\.pak$/i.test(f)) fs.rmSync(path.join(loc, f), { force: true });
 
   step("zip");
   fs.mkdirSync(setupDir, { recursive: true });

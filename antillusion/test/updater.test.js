@@ -56,5 +56,14 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
   const mk = (sha) => createUpdater({ appDir: plain, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }), fetchImpl: devApi(sha) });
   assert.strictEqual((await mk("b".repeat(40)).check()).available, true);
   assert.strictEqual((await mk("a".repeat(40)).check()).available, false);
+  // installer download: only github https links, must look like a Windows executable of the announced size
+  const exe = Buffer.concat([Buffer.from("MZ"), Buffer.alloc(60000, 1)]), dl = path.join(tmp, "setup-update.exe");
+  const mkDl = (body, ok = true) => createUpdater({ appDir: plain, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }), fetchImpl: async () => ({ ok, status: ok ? 200 : 500, arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.length) }) });
+  const got = await mkDl(exe).downloadInstaller("https://github.com/x/y/releases/download/dev-build/Antillusion-Setup.exe", dl, exe.length);
+  assert.strictEqual(got.size, exe.length); assert.ok(fs.existsSync(dl));
+  await assert.rejects(mkDl(exe).downloadInstaller("https://evil.example/Setup.exe", dl), /غير موثوق/);
+  await assert.rejects(mkDl(Buffer.alloc(60000, 2)).downloadInstaller("https://github.com/x/y/s.exe", dl), /غير صالح/);
+  await assert.rejects(mkDl(exe).downloadInstaller("https://github.com/x/y/s.exe", dl, exe.length + 1), /حجم/);
+  await assert.rejects(mkDl(exe, false).downloadInstaller("https://github.com/x/y/s.exe", dl), /HTTP 500/);
   console.log("PASS updater");
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -38,13 +38,13 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
         if (res.status === 404) return { ...base, checkedAt, channel: "dev", head: String(info.commit || "").slice(0, 7), available: false, note: "لا يوجد بناء تجريبي منشور بعد" };
         if (!res.ok) throw new Error("GitHub API: HTTP " + res.status);
         const j = await res.json(), sha = ((String(j.body || "").match(/commit:\s*([0-9a-f]{40})/i) || [])[1] || "").toLowerCase(), asset = (j.assets || []).find((a) => /setup.*\.exe$/i.test(a.name));
-        return { ...base, checkedAt, channel: "dev", head: String(info.commit || "").slice(0, 7), latest: sha.slice(0, 7), available: !!(sha && info.commit && sha !== String(info.commit).toLowerCase() && asset), url: asset ? asset.browser_download_url : null, page: j.html_url, notes: String(j.body || "").replace(/commit:\s*[0-9a-f]{40}/i, "").trim().slice(0, 1500) };
+        return { ...base, checkedAt, channel: "dev", head: String(info.commit || "").slice(0, 7), latest: sha.slice(0, 7), available: !!(sha && info.commit && sha !== String(info.commit).toLowerCase() && asset), url: asset ? asset.browser_download_url : null, size: asset ? asset.size : 0, page: j.html_url, notes: String(j.body || "").replace(/commit:\s*[0-9a-f]{40}/i, "").trim().slice(0, 1500) };
       }
       const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(10000) });
       if (res.status === 404) return { ...base, checkedAt, available: false, note: "لا توجد إصدارات منشورة على GitHub بعد" };
       if (!res.ok) throw new Error("GitHub API: HTTP " + res.status);
       const j = await res.json(), asset = (j.assets || []).find((a) => /setup.*\.exe$/i.test(a.name)) || (j.assets || [])[0];
-      return { ...base, checkedAt, latest: j.tag_name, available: newer(j.tag_name, base.version), url: asset ? asset.browser_download_url : j.html_url, page: j.html_url, notes: String(j.body || "").slice(0, 1500) };
+      return { ...base, checkedAt, latest: j.tag_name, available: newer(j.tag_name, base.version), url: asset ? asset.browser_download_url : j.html_url, size: asset ? asset.size : 0, page: j.html_url, notes: String(j.body || "").slice(0, 1500) };
     }
     const r = await root(), branch = branchPref || base.branch;
     if (!branch || branch === "HEAD") throw new Error("المستودع في حالة detached HEAD — حدّد فرع التحديث من الإعدادات");
@@ -94,7 +94,19 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
     return { rolledBack: true, to: sha };
   }
 
-  return { info, check, apply, rollback };
+  /** Downloads the new Setup.exe for an installed (non-git) copy and checks it is plausibly complete. */
+  async function downloadInstaller(url, dest, expectedSize) {
+    if (!/^https:\/\/(github\.com|objects\.githubusercontent\.com)\//.test(String(url))) throw new Error("رابط المثبّت غير موثوق");
+    const res = await fetchImpl(url, { headers: { "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(300000) });
+    if (!res.ok) throw new Error("فشل تنزيل المثبّت: HTTP " + res.status);
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length < 50000 || buf.slice(0, 2).toString() !== "MZ") throw new Error("ملف المثبّت غير صالح");
+    if (expectedSize && buf.length !== expectedSize) throw new Error("حجم المثبّت لا يطابق المتوقع");
+    fs.writeFileSync(dest, buf);
+    return { file: dest, size: buf.length };
+  }
+
+  return { info, check, apply, rollback, downloadInstaller };
 }
 
 module.exports = { createUpdater, newer, REPO };

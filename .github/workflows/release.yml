@@ -34,16 +34,22 @@ jobs:
       - name: Smoke-test a real install (downloads Node, Git and OmniRoute) with Windows PowerShell 5.1
         shell: powershell
         run: |
+          $sw = [Diagnostics.Stopwatch]::StartNew()
           ./installer/setup.ps1 -Silent -NoLaunch -ForceRuntime -Payload (Resolve-Path ../antillusion-setup/Antillusion-app-win-x64.zip).Path
           if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw "setup exited with $LASTEXITCODE" }
+          Write-Host ("foreground install (what the user waits for): {0:n1}s" -f $sw.Elapsed.TotalSeconds)
           $dir = Join-Path $env:LOCALAPPDATA "Programs\Antillusion"
-          foreach ($p in @("Antillusion.exe", "resources\app\main.js", "resources\app\build-info.json", "runtime\node\node.exe", "runtime\git\cmd\git.exe", "Uninstall-Antillusion.cmd")) {
+          foreach ($p in @("Antillusion.exe", "resources\app\main.js", "resources\app\build-info.json", "Uninstall-Antillusion.cmd", "runtime-setup.ps1")) {
             if (-not (Test-Path (Join-Path $dir $p))) { throw "missing after install: $p" }
           }
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "Antillusion.lnk"))) { throw "desktop shortcut missing" }
+          Write-Host "app installed; waiting for the background finishers (Node.js, Git)"
+          $deadline = (Get-Date).AddMinutes(5)
+          while ((Get-Date) -lt $deadline -and -not ((Test-Path (Join-Path $dir "runtime\node\node.exe")) -and (Test-Path (Join-Path $dir "runtime\git\cmd\git.exe")))) { Start-Sleep -Seconds 3 }
+          foreach ($p in @("runtime\node\node.exe", "runtime\git\cmd\git.exe")) { if (-not (Test-Path (Join-Path $dir $p))) { Get-Content (Join-Path $dir "runtime\setup-*.log") -ErrorAction SilentlyContinue; throw "background install missing: $p" } }
           & (Join-Path $dir "runtime\node\node.exe") -v
-          Write-Host "install OK"
-          if ((Test-Path (Join-Path $dir "runtime\omniroute.installing")) -or (Test-Path (Join-Path $env:APPDATA "npm\node_modules\omniroute\bin\omniroute.mjs"))) { Write-Host "OmniRoute install started in the background" } else { throw "OmniRoute background install was not started" }
+          & (Join-Path $dir "runtime\git\cmd\git.exe") --version
+          Write-Host "install OK (OmniRoute keeps installing in the background; not awaited)"
       - uses: actions/upload-artifact@v4
         with:
           name: Antillusion-Setup
@@ -67,6 +73,9 @@ jobs:
             --notes "Latest build of branch ${{ github.ref_name }}. Download Antillusion-Setup.exe (tiny; it downloads the rest).
 
           commit: ${{ github.sha }}"
+      - name: Live updater check against the published dev-build
+        if: startsWith(github.ref, 'refs/heads/')
+        run: node test/updater.live.js
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
