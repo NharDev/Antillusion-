@@ -49,7 +49,7 @@ $lib = {
   function Download($url, $out, $from, $to, $label) {
     for ($try = 1; $try -le 3; $try++) {
       try {
-        Check; Log "GET $url"
+        Check; Log ("Downloading " + ([IO.Path]::GetFileName(([Uri]$url).AbsolutePath)))
         $wc = New-Object System.Net.WebClient; $wc.Headers["User-Agent"] = "Antillusion-Setup"
         $global:AntiDone = $false; $global:AntiErr = $null; $global:AntiPct = 0
         $null = Register-ObjectEvent -InputObject $wc -EventName DownloadProgressChanged -SourceIdentifier "dl.p" -Action { $global:AntiPct = $EventArgs.ProgressPercentage }
@@ -61,7 +61,8 @@ $lib = {
         return
       } catch {
         Unregister-Event -SourceIdentifier "dl.p" -ErrorAction SilentlyContinue; Unregister-Event -SourceIdentifier "dl.c" -ErrorAction SilentlyContinue
-        if ($try -eq 3) { throw "download failed: $url ($($_.Exception.Message))" }
+        $permanent = $_.Exception.Message -match "\((404|403|401|410)\)"   # retrying a missing file only wastes time
+        if ($try -eq 3 -or $permanent) { throw "download failed ($([IO.Path]::GetFileName(([Uri]$url).AbsolutePath))): $($_.Exception.Message)" }
         Log "attempt $try failed, retrying"; Start-Sleep -Seconds (2 * $try)
       }
     }
@@ -149,7 +150,7 @@ $fg = {
       $urls = @(); if ($cfg.Payload) { $urls += $cfg.Payload }
       $urls += "https://github.com/$Repo/releases/latest/download/$PayloadName", "https://github.com/$Repo/releases/download/dev-build/$PayloadName"
       $ok = $false
-      foreach ($u in $urls) { try { Download $u $zip 3 68 "Downloading Antillusion"; $ok = $true; break } catch { Log $_.Exception.Message } }
+      foreach ($u in $urls) { try { Download $u $zip 3 68 "Downloading Antillusion"; $ok = $true; break } catch { Log "not available here, trying the next source" } }
       if (-not $ok) { throw "Could not download Antillusion. Check your internet connection and try again." }
     }
     Step 69 "Installing Antillusion" "Unpacking the app"

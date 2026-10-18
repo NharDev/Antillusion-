@@ -14,12 +14,13 @@ using System.Windows.Forms;
 public class AntiSetupWindow : Form
 {
     const int W = 640, H = 420;
-    static readonly Color Coral = Color.FromArgb(224, 122, 86), CoralDark = Color.FromArgb(110, 58, 41), CoralLight = Color.FromArgb(255, 188, 150);
-    static readonly Color Bg = Color.FromArgb(25, 25, 28), Panel = Color.FromArgb(19, 19, 22), Edge = Color.FromArgb(52, 52, 58);
-    static readonly Color Dim = Color.FromArgb(138, 138, 148), Txt = Color.FromArgb(232, 232, 237);
+    static readonly Color Coral = Color.FromArgb(124, 156, 255), CoralDark = Color.FromArgb(40, 52, 104), CoralLight = Color.FromArgb(200, 214, 255);   // Antillusion accent (#7c9cff) and its shades
+    static readonly Color Bg = Color.FromArgb(18, 19, 22), Panel = Color.FromArgb(14, 15, 17), Edge = Color.FromArgb(44, 46, 54);   // Antillusion dark theme
+    static readonly Color Dim = Color.FromArgb(111, 116, 126), Txt = Color.FromArgb(228, 229, 233);
     static readonly Color Green = Color.FromArgb(80, 205, 125), Red = Color.FromArgb(240, 98, 98);
     static readonly Dictionary<char, string[]> Glyph = new Dictionary<char, string[]>();
 
+    static readonly StringFormat Clip = new StringFormat(StringFormat.GenericDefault) { Trimming = StringTrimming.EllipsisCharacter, FormatFlags = StringFormatFlags.NoWrap | StringFormatFlags.LineLimit };
     readonly object sync = new object();
     string status = "Starting", failMessage = "", statusKey = "";
     double statusSince, target, disp;
@@ -33,6 +34,9 @@ public class AntiSetupWindow : Form
     readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
     Font mono, monoBold, monoSmall, ui, uiBold, tiny;
     public bool Cancelled;
+    int hover = -1;                 // window-control under the mouse: 0 minimize, 1 maximize, 2 close
+    bool maximized;
+    float scale = 1f, offX, offY;   // the design is W x H; the window can be maximized and everything scales with it
     public bool Success { get { return done && ok; } }
 
     [DllImport("user32.dll")] static extern bool ReleaseCapture();
@@ -103,22 +107,50 @@ public class AntiSetupWindow : Form
     public void Simulate(double seconds) { for (double t = 0; t < seconds; t += 1.0 / 30) Step(1.0 / 30); }
 
     // ---------- window behaviour ----------
+    PointF ToDesign(int x, int y) { return new PointF((x - offX) / scale, (y - offY) / scale); }
+    static int ControlAt(PointF p)
+    {
+        if (p.Y < 0 || p.Y >= 40) return -1;
+        if (p.X >= W - 46) return 2; if (p.X >= W - 92) return 1; if (p.X >= W - 138) return 0; return -1;
+    }
+    protected override void OnMouseMove(MouseEventArgs e) { int h = ControlAt(ToDesign(e.X, e.Y)); if (h != hover) { hover = h; Cursor = h >= 0 ? Cursors.Hand : Cursors.Default; Invalidate(); } }
+    protected override void OnMouseLeave(EventArgs e) { if (hover != -1) { hover = -1; Invalidate(); } }
     protected override void OnMouseDown(MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;
-        if (e.Y < 40)
+        PointF p = ToDesign(e.X, e.Y);
+        if (p.Y >= 0 && p.Y < 40)
         {
-            if (Math.Abs(e.X - 22) < 9 && Math.Abs(e.Y - 20) < 9) { Cancelled = true; Close(); return; }
-            if (Math.Abs(e.X - 42) < 9 && Math.Abs(e.Y - 20) < 9) { WindowState = FormWindowState.Minimized; return; }
-            ReleaseCapture(); SendMessage(Handle, 0xA1, 2, 0);
+            int c = ControlAt(p);
+            if (c == 2) { Cancelled = true; Close(); return; }
+            if (c == 1) { ToggleMaximize(); return; }
+            if (c == 0) { WindowState = FormWindowState.Minimized; return; }
+            if (!maximized) { ReleaseCapture(); SendMessage(Handle, 0xA1, 2, 0); }
         }
     }
-    protected override void OnPaint(PaintEventArgs e) { lock (sync) { Draw(e.Graphics); } }
+    protected override void OnMouseDoubleClick(MouseEventArgs e) { PointF p = ToDesign(e.X, e.Y); if (p.Y >= 0 && p.Y < 40 && ControlAt(p) < 0) ToggleMaximize(); }
+    void ToggleMaximize()
+    {
+        if (maximized) { maximized = false; WindowState = FormWindowState.Normal; ClientSize = new Size(W, H); Region = new Region(Round(new RectangleF(0, 0, W, H), 16)); }
+        else { maximized = true; MaximizedBounds = Screen.FromControl(this).WorkingArea; Region = null; WindowState = FormWindowState.Maximized; }
+        Invalidate();
+    }
+    protected override void OnResize(EventArgs e) { base.OnResize(e); Invalidate(); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        Graphics g = e.Graphics; int cw = ClientSize.Width, ch = ClientSize.Height;
+        scale = Math.Min(cw / (float)W, ch / (float)H); if (scale <= 0) scale = 1;
+        offX = (cw - W * scale) / 2f; offY = (ch - H * scale) / 2f;
+        g.Clear(maximized ? Bg : Color.Black);   // letterbox colour matches the window; black corners are cut off by the window Region
+        g.TranslateTransform(offX, offY); g.ScaleTransform(scale, scale);
+        lock (sync) { Draw(g); }
+    }
 
     public void SaveFrame(string path)
     {
         using (Bitmap bmp = new Bitmap(W, H))
-        using (Graphics g = Graphics.FromImage(bmp)) { lock (sync) { Draw(g); } bmp.Save(path, ImageFormat.Png); }
+        using (Graphics g = Graphics.FromImage(bmp)) { scale = 1f; offX = 0; offY = 0; g.Clear(Color.Black); lock (sync) { Draw(g); } bmp.Save(path, ImageFormat.Png); }
     }
 
     // ---------- drawing ----------
@@ -140,10 +172,9 @@ public class AntiSetupWindow : Form
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
         g.PixelOffsetMode = PixelOffsetMode.Half;
-        g.Clear(Color.Black);
         Color accent = failMessage.Length > 0 && done && !ok ? Red : (done && ok ? Green : Coral);
 
-        using (GraphicsPath win = Round(new RectangleF(0, 0, W - 1, H - 1), 16))
+        using (GraphicsPath win = Round(new RectangleF(0, 0, W - 1, H - 1), maximized ? 0.5f : 16))
         {
             using (SolidBrush b = new SolidBrush(Bg)) g.FillPath(b, win);
             // drifting pixels
@@ -157,8 +188,9 @@ public class AntiSetupWindow : Form
             // title bar
             using (SolidBrush b = new SolidBrush(Color.FromArgb(235, Bar()))) { g.SetClip(new RectangleF(0, 0, W, 40)); g.FillPath(b, win); g.ResetClip(); }
             using (Pen p = new Pen(Edge)) g.DrawLine(p, 0, 40, W, 40);
-            Dot(g, 22, Color.FromArgb(255, 95, 87)); Dot(g, 42, Color.FromArgb(254, 188, 46)); Dot(g, 62, Color.FromArgb(40, 200, 64));
-            using (SolidBrush b = new SolidBrush(Dim)) g.DrawString("antillusion \u2014 setup", monoSmall, b, new RectangleF(0, 12, W, 20), new StringFormat { Alignment = StringAlignment.Center });
+            DrawMiniMark(g, 18, 20, accent);
+            using (SolidBrush b = new SolidBrush(Dim)) g.DrawString("antillusion \u2014 setup", monoSmall, b, 34, 12);
+            DrawControls(g);
 
             DrawChip(g, accent);
             DrawTitle(g, accent);
@@ -171,7 +203,28 @@ public class AntiSetupWindow : Form
         }
     }
     static Color Bar() { return Color.FromArgb(32, 32, 36); }
-    static void Dot(Graphics g, float x, Color c) { using (SolidBrush b = new SolidBrush(c)) g.FillEllipse(b, x - 6, 14, 12, 12); }
+    static readonly string[][] Icons = new string[][] {
+        new[] { "       ", "       ", "       ", "       ", "       ", "#######", "       " },                       // minimize
+        new[] { "#######", "#     #", "#     #", "#     #", "#     #", "#     #", "#######" },                        // maximize
+        new[] { "#######", "#     #", "# ### #", "# ### #", "# ### #", "#     #", "#######" },                        // restore
+        new[] { "#     #", " #   # ", "  # #  ", "   #   ", "  # #  ", " #   # ", "#     #" } };                      // close
+    void DrawControls(Graphics g)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            float x0 = W - 46 * (3 - i); bool hot = hover == i;
+            if (hot) using (SolidBrush b = new SolidBrush(i == 2 ? Color.FromArgb(200, Red) : Color.FromArgb(34, 255, 255, 255))) g.FillRectangle(b, x0, 0, 46, 40);
+            string[] icon = Icons[i == 1 && maximized ? 2 : (i == 2 ? 3 : i)];
+            Color c = hot ? Color.White : Dim; float px = x0 + 23 - 10.5f, py = 20 - 10.5f;   // 7 cells of 2px with a 1px gap = 21px
+            using (SolidBrush b = new SolidBrush(c))
+                for (int r = 0; r < 7; r++) for (int col = 0; col < 7; col++) if (icon[r][col] == '#') g.FillRectangle(b, px + col * 3, py + r * 3, 2, 2);
+        }
+    }
+    void DrawMiniMark(Graphics g, float cx, float cy, Color accent)
+    {
+        using (Pen pen = new Pen(accent, 1.6f)) g.DrawEllipse(pen, cx - 6, cy - 6, 12, 12);
+        using (SolidBrush b = new SolidBrush(accent)) g.FillPie(b, cx - 6, cy - 6, 12, 12, (float)(clock * 150), 180);
+    }
 
     void DrawChip(Graphics g, Color accent)
     {
@@ -252,7 +305,7 @@ public class AntiSetupWindow : Form
             double fade = Math.Min(1, age * 5);
             int alpha = (int)(255 * fade * (rank == 0 ? 1.0 : (rank == 1 ? 0.7 : (rank == 2 ? 0.5 : 0.35))));
             using (SolidBrush b1 = new SolidBrush(Color.FromArgb(alpha, accent))) g.DrawString("$", mono, b1, 46, y);
-            using (SolidBrush b2 = new SolidBrush(Color.FromArgb(alpha, rank == 0 ? Txt : Dim))) g.DrawString(logs[i].Substring(0, shown), mono, b2, 64, y);
+            using (SolidBrush b2 = new SolidBrush(Color.FromArgb(alpha, rank == 0 ? Txt : Dim))) g.DrawString(logs[i].Substring(0, shown), mono, b2, new RectangleF(64, y, 528, 20), Clip);
         }
         if (n == 0) using (SolidBrush b = new SolidBrush(Dim)) g.DrawString("waiting for the first step...", mono, b, 64, 231);
     }
@@ -278,13 +331,13 @@ public class AntiSetupWindow : Form
     {
         if (done && !ok)
         {
-            using (SolidBrush b = new SolidBrush(Red)) g.DrawString(failMessage, mono, b, new RectangleF(38, 358, 566, 40));
+            using (SolidBrush b = new SolidBrush(Red)) g.DrawString(failMessage, mono, b, new RectangleF(38, 356, 566, 34), new StringFormat(StringFormat.GenericDefault) { Trimming = StringTrimming.EllipsisWord, FormatFlags = StringFormatFlags.LineLimit });
             return;
         }
         string text = status; int shown = (int)Math.Min(text.Length, (clock - statusSince) * 60);
         string part = text.Substring(0, Math.Max(0, shown));
-        using (SolidBrush b = new SolidBrush(Txt)) g.DrawString(part, mono, b, 38, 358);
-        float wpx = g.MeasureString(part, mono, 2000, StringFormat.GenericTypographic).Width;
+        using (SolidBrush b = new SolidBrush(Txt)) g.DrawString(part, mono, b, new RectangleF(38, 358, 566, 20), Clip);
+        float wpx = Math.Min(540f, g.MeasureString(part, mono, 2000, StringFormat.GenericTypographic).Width);
         if (((int)(clock * 2)) % 2 == 0 && !done) using (SolidBrush b = new SolidBrush(accent)) g.FillRectangle(b, 40 + wpx, 360, 8, 15);
     }
 }
