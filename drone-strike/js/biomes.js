@@ -673,7 +673,10 @@ const Biomes = (() => {
     const LEFT = { px: 'nz', nz: 'nx', nx: 'pz', pz: 'px' };
     const RIGHT = { px: 'pz', pz: 'nx', nx: 'nz', nz: 'px' };
     const key = (c) => c.join(',');
-    const cells = [{ p: [0, 0, 0], open: new Set() }];
+    // random walk; retry until the tunnel is long enough (walks can trap themselves)
+    let cells = [], best = [];
+    for (let attempt = 0; attempt < 30 && best.length < Math.min(nCells, 9 + t * 5); attempt++) {
+    cells = [{ p: [0, 0, 0], open: new Set() }];
     const visited = new Set([key([0, 0, 0])]);
     let heading = 'px', lastVertical = false;
     for (let s = 1; s < nCells; s++) {
@@ -705,6 +708,9 @@ const Biomes = (() => {
       }
       if (!moved) break;
     }
+    if (cells.length > best.length) best = cells;
+    }
+    cells = best;
     const bandXZ = [[-C / 2, -W / 2], [-W / 2, W / 2], [W / 2, C / 2]];
     const bandY = [[-C / 2, -H / 2], [-H / 2, H / 2], [H / 2, C / 2]];
     const openSub = (open, a, b, c) => {
