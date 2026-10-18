@@ -19,7 +19,8 @@ const step = (s) => console.log("\n== " + s);
 
 (async () => {
   step("icon");
-  run(electron, [path.join(__dirname, "make-icon.js")], { env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "ELECTRON_RUN_AS_NODE")) });
+  if (process.env.CI && fs.existsSync(path.join(app, "icon.ico"))) console.log("CI: using the committed icon.ico");
+  else run(electron, [path.join(__dirname, "make-icon.js")], { env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "ELECTRON_RUN_AS_NODE")) });
 
   step(`package (Electron ${version})`);
   const { packager } = await import(require("url").pathToFileURL(path.join(tools, "@electron", "packager", "dist", "index.js")).href);   // ESM-only package

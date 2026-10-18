@@ -703,7 +703,7 @@ async function updateModal() {
       h("div", { class: "upd-actions" },
         st.phase === "ready" ? h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل") :
         st.available && st.mode === "git" ? h("button", { class: "btn primary", disabled: busy || st.dirty || st.ahead > 0, onclick: () => call("update:install") }, busy ? "جارٍ التحديث…" : "حدّث الآن") :
-        st.available && st.url ? h("button", { class: "btn primary", onclick: () => call("open:external", st.url) }, "تنزيل المثبّت") : null,
+        st.available && st.url ? h("button", { class: "btn primary", disabled: busy, onclick: () => call("update:install") }, busy ? "جارٍ التنزيل…" : "نزّل وثبّت التحديث") : null,
         h("button", { class: "btn", disabled: busy, onclick: () => call("update:check") }, busy ? "…" : "افحص الآن"),
         S.settings.prevHead && st.mode === "git" ? h("button", { class: "btn", disabled: busy, title: "العودة إلى النسخة التي كنت عليها قبل آخر تحديث", onclick: async () => { if (await ask("التراجع عن آخر تحديث؟", { input: false, ok: "تراجع", danger: true, note: "سيعود الكود إلى النسخة السابقة ويُوقَف التحديث التلقائي. أعد تشغيل التطبيق بعدها." })) { const r = await call("update:rollback"); if (r) { const ns = await call("settings:set", {}); if (ns) S.settings = ns; } } } }, "تراجع") : null));
     const parts = [hero];

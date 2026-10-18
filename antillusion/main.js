@@ -13,6 +13,10 @@ const library = require("./core/library");
 const { createUpdater } = require("./core/updater");
 
 app.setName("Antillusion");
+// the installer drops Node and Git under <install>/runtime; Explorer-launched apps may not see the updated user PATH yet
+for (const d of [path.join(path.dirname(process.execPath), "runtime", "node"), path.join(path.dirname(process.execPath), "runtime", "git", "cmd")]) {
+  if (fs.existsSync(d) && !(process.env.PATH || "").split(path.delimiter).includes(d)) process.env.PATH = d + path.delimiter + (process.env.PATH || "");
+}
 if (process.env.ANTILLUSION_DATA) app.setPath("userData", process.env.ANTILLUSION_DATA);
 const SELFTEST = !!(process.env.ANTILLUSION_SELFTEST || process.env.ANTILLUSION_SHOT);
 if (!SELFTEST && !app.requestSingleInstanceLock()) app.quit();
@@ -376,6 +380,18 @@ async function checkUpdate({ auto } = {}) {
 async function installUpdate() {
   if (updateState.phase === "installing") return updateState;
   setUpdate({ phase: "installing", error: null });
+  if (updateState.mode === "release") {   // installed copy: download the new Setup.exe, run it and quit; the installer restarts the app
+    try {
+      if (!updateState.url) throw new Error("لا يوجد ملف مثبّت في آخر إصدار");
+      const res = await fetch(updateState.url, { headers: { "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(600000) });
+      if (!res.ok) throw new Error("فشل تنزيل المثبّت: HTTP " + res.status);
+      const file = path.join(app.getPath("temp"), "Antillusion-Setup-update.exe");
+      fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
+      spawn(file, [], { detached: true, stdio: "ignore" }).unref();
+      setTimeout(() => app.exit(0), 600);
+      return setUpdate({ phase: "installing", note: "تم تنزيل المثبّت — سيُغلق التطبيق ويُعاد فتحه بعد التثبيت" });
+    } catch (e) { return setUpdate({ phase: "error", error: e.message }); }
+  }
   try { const r = await updater.apply(branchPref()); if (r.updated && r.previous) store.setSettings({ prevHead: r.previous }); setUpdate({ ...r, phase: r.updated ? "ready" : "uptodate" }); }
   catch (e) { setUpdate({ phase: "error", error: e.message }); }
   return updateState;
