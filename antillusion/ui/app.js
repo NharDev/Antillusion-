@@ -851,6 +851,7 @@ function setupWizard() {
 function onEvt(e) {
   if (e.t === "servers") { S.servers = e.list; renderServers(); const t = activeTab(); if (t && t.kind === "web" && !t.wv) drawBlank(t); return; }
   if (e.t === "update") return onUpdateState(e.state);
+  if (e.t === "router") return toast("OmniRoute يُثبَّت في الخلفية — قد يستغرق بضع دقائق، وسيعمل تلقائياً عند اكتماله");
   if (e.t === "preview") return openPreview(e);
   if (e.t === "previewRead") return handlePreviewRead(e);
   if (e.t === "session" && !S.sess.has(e.sid)) { view(e.meta); syncMeta(e.meta); return renderSidebar(); }

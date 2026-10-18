@@ -40,7 +40,7 @@ jobs:
           if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "Antillusion.lnk"))) { throw "desktop shortcut missing" }
           & (Join-Path $dir "runtime\node\node.exe") -v
           Write-Host "install OK"
-          if (Test-Path (Join-Path $env:APPDATA "npm\node_modules\omniroute\bin\omniroute.mjs")) { Write-Host "OmniRoute installed" } else { Write-Warning "OmniRoute was not installed (non-fatal)" }
+          if ((Test-Path (Join-Path $dir "runtime\omniroute.installing")) -or (Test-Path (Join-Path $env:APPDATA "npm\node_modules\omniroute\bin\omniroute.mjs"))) { Write-Host "OmniRoute install started in the background" } else { throw "OmniRoute background install was not started" }
       - uses: actions/upload-artifact@v4
         with:
           name: Antillusion-Setup

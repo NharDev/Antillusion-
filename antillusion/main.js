@@ -67,6 +67,9 @@ async function ensureLocalRouter() {
   if (await up()) return true;
   if (!routerStarting) routerStarting = (async () => {
     const cli = path.join(process.env.APPDATA || "", "npm", "node_modules", "omniroute", "bin", "omniroute.mjs");
+    // Setup installs OmniRoute in the background (it is a few hundred MB); wait for it up to 15 minutes
+    const flag = path.join(path.dirname(process.execPath), "runtime", "omniroute.installing");
+    if (!fs.existsSync(cli) && fs.existsSync(flag)) { send({ t: "router", state: "installing" }); for (let i = 0; i < 450 && !fs.existsSync(cli) && fs.existsSync(flag); i++) await new Promise((r) => setTimeout(r, 2000)); }
     if (!fs.existsSync(cli)) return false;
     const env = { ...process.env, OMNIROUTE_SERVER_HOST: "127.0.0.1" };
     delete env.ELECTRON_RUN_AS_NODE;

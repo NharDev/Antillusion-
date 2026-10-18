@@ -35,8 +35,10 @@ if ($gui) {
   } catch { $gui = $false }
 }
 function Pump { if ($gui) { [System.Windows.Forms.Application]::DoEvents() } }
+$script:lastLog = ""
 function Progress($pct, $text) {
-  Write-Host "[$pct%] $text"
+  $key = "$([int]([int]$pct / 10))|" + ($text -replace "\(\d+%\)", "")   # console log only when the step or the next 10% changes
+  if ($key -ne $script:lastLog) { $script:lastLog = $key; Write-Host ("[{0}%] {1}" -f [int]$pct, $text) }
   if ($gui) { $status.Text = $text; $bar.Value = [Math]::Max(0, [Math]::Min(100, [int]$pct)); Pump }
 }
 function Warn($text) { Write-Host "  ! $text" -ForegroundColor Yellow }
@@ -138,21 +140,24 @@ try {
       Progress 83 "Installing Git..."
       $p = Start-Process -FilePath $pg -ArgumentList @("-o", "`"$gitDir`"", "-y") -PassThru -WindowStyle Hidden
       while (-not $p.HasExited) { Pump; Start-Sleep -Milliseconds 150 }
-      Remove-Item $pg -Force
+      Remove-Item $pg -Force -ErrorAction SilentlyContinue   # may stay locked for a moment (antivirus scan); the temp file is harmless
+      if (-not (Test-Path (Join-Path $gitDir "cmd\git.exe"))) { throw "Git did not unpack correctly" }
       AddUserPath (Join-Path $gitDir "cmd")
     } catch { Warn "Git was not installed: $($_.Exception.Message). Antillusion works without it; git features and in-app git updates will not." }
   }
 
-  # ---------- 4. OmniRoute ----------
+  # ---------- 4. OmniRoute (huge package: installed in the background so Setup finishes quickly) ----------
   $omni = Join-Path $env:APPDATA "npm\node_modules\omniroute\bin\omniroute.mjs"
+  $flag = Join-Path $rt "omniroute.installing"
   if (Test-Path $omni) { Progress 94 "OmniRoute found" }
   else {
     try {
-      Progress 86 "Installing OmniRoute (model router)..."
-      $npm = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "npm install -g omniroute --no-audit --no-fund" -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $env:TEMP "antillusion-npm.log") -RedirectStandardError (Join-Path $env:TEMP "antillusion-npm.err.log")
-      while (-not $npm.HasExited) { Pump; Start-Sleep -Milliseconds 200 }
-      if ($npm.ExitCode -ne 0 -or -not (Test-Path $omni)) { throw "npm install -g omniroute failed (exit $($npm.ExitCode)); see %TEMP%\antillusion-npm.err.log" }
-    } catch { Warn "OmniRoute was not installed: $($_.Exception.Message). Run 'npm install -g omniroute' later, or use OpenRouter in Settings." }
+      Progress 90 "Starting OmniRoute install in the background..."
+      Set-Content -Path $flag -Value (Get-Date).ToString("o")
+      $npmLog = Join-Path $dir "omniroute-install.log"
+      $cmd = "npm install -g omniroute --no-audit --no-fund > `"$npmLog`" 2>&1 & del `"$flag`""
+      Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmd -WindowStyle Hidden | Out-Null
+    } catch { Warn "Could not start the OmniRoute install: $($_.Exception.Message). Run 'npm install -g omniroute' later, or use OpenRouter in Settings." }
   }
 
   # ---------- 5. shortcuts + uninstall entry ----------
