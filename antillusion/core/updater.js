@@ -22,11 +22,18 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
     return top;
   };
 
+  // Version = MAJOR.MINOR from package.json (set by hand) + PATCH that grows with every change:
+  // git checkout → number of commits; installed copy → the CI build number recorded in build-info.json (a tag vX.Y.Z pins it exactly).
+  const withPatch = (v, patch) => { const [a = "1", b = "0"] = String(v || "1.0.0").split("."); return `${a}.${b}.${patch}`; };
   async function info() {
-    const version = pkg().version || "0.0.0", r = await root();
-    if (!r) return { mode: "release", version, repo };
-    const [br, hd] = await Promise.all([git(r, "rev-parse", "--abbrev-ref", "HEAD"), git(r, "rev-parse", "--short", "HEAD")]);
-    return { mode: "git", version, repo, branch: br.ok ? br.out : "", head: hd.ok ? hd.out : "" };
+    const pv = pkg().version || "0.0.0", r = await root();
+    if (!r) {
+      let bi = {}; try { bi = JSON.parse(fs.readFileSync(path.join(appDir, "build-info.json"), "utf8")); } catch {}
+      return { mode: "release", version: bi.version || pv, repo };
+    }
+    const [br, hd, cnt] = await Promise.all([git(r, "rev-parse", "--abbrev-ref", "HEAD"), git(r, "rev-parse", "--short", "HEAD"), git(r, "rev-list", "--count", "HEAD")]);
+    const n = parseInt(cnt.out, 10);
+    return { mode: "git", version: n > 0 ? withPatch(pv, n) : pv, repo, branch: br.ok ? br.out : "", head: hd.ok ? hd.out : "" };
   }
 
   async function check(branchPref) {

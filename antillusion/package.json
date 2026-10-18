@@ -1,7 +1,7 @@
 {
   "name": "antillusion",
   "productName": "Antillusion",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Antillusion — a desktop AI coding agent: chat, tools, permissions, live preview tabs, worktrees, usage, starter templates and a built-in engineering library.",
   "main": "main.js",
   "author": "Adam",

@@ -22,6 +22,7 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
 (async () => {
   let installs = 0;
   const u = createUpdater({ appDir: path.join(b, "app"), git, npm: async () => { installs++; return { ok: true }; } });
+  const inf = await u.info(); assert.match(inf.version, /^1\.0\.\d+$/, "git copy: version patch = commit count"); assert.ok(+inf.version.split(".")[2] >= 1);
   let st = await u.check();
   assert.strictEqual(st.mode, "git"); assert.strictEqual(st.available, false); assert.strictEqual(st.branch, "main");
 
@@ -48,6 +49,9 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
   const plain = fs.mkdtempSync(path.join(os.tmpdir(), "plain-")); fs.writeFileSync(path.join(plain, "package.json"), '{"version":"1.0.0"}');
   const rel = createUpdater({ appDir: plain, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }),
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v1.2.0", html_url: "https://x/r", body: "notes", assets: [{ name: "Antillusion-Setup.exe", browser_download_url: "https://x/s.exe" }] }) }) });
+  assert.strictEqual((await rel.info()).version, "1.0.0");
+  fs.writeFileSync(path.join(plain, "build-info.json"), JSON.stringify({ version: "1.1.42", channel: "stable" })); assert.strictEqual((await rel.info()).version, "1.1.42", "installed copy: version comes from build-info");
+  fs.rmSync(path.join(plain, "build-info.json"));
   const rs = await rel.check();
   assert.strictEqual(rs.mode, "release"); assert.strictEqual(rs.available, true); assert.strictEqual(rs.url, "https://x/s.exe");
   // dev channel: compares the commit recorded in build-info.json with the one named in the dev-build prerelease

@@ -338,7 +338,7 @@ const H = {
   "app:version": async () => {
     let bi = {}; try { bi = JSON.parse(fs.readFileSync(path.join(__dirname, "build-info.json"), "utf8")); } catch {}
     const i = updater ? await updater.info() : {};
-    return { version: i.version || "", mode: i.mode, branch: i.branch || "", commit: String(i.head || bi.commit || "").slice(0, 7), run: bi.run || "", channel: bi.channel || (i.mode === "git" ? "git" : "stable"), builtAt: bi.builtAt || "" };
+    return { version: bi.version || i.version || "", mode: i.mode, branch: i.branch || "", commit: String(i.head || bi.commit || "").slice(0, 7), run: bi.run || "", channel: bi.channel || (i.mode === "git" ? "git" : "stable"), builtAt: bi.builtAt || "" };
   },
   "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; await ensureLocalRouter(); try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },

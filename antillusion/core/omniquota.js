@@ -15,7 +15,8 @@ function normQuota(name, q) {
   let pct = num(q.remainingPercentage, q.remainingPercent, q.percentRemaining, q.remaining_percentage);
   if (pct == null) { const usedPct = num(q.usedPercentage, q.usedPercent, q.percentUsed, q.used_percentage); if (usedPct != null) pct = 100 - usedPct; }
   if (pct == null && total && remaining != null) pct = (remaining / total) * 100;
-  return { name: String(q.name || q.label || name), remainingPct: clampPct(pct), used, total, remaining, resetAt: q.resetAt || q.resetsAt || q.nextResetAt || q.reset_at || null };
+  if (total === 0) pct = null;   // an empty/unknown allowance has no meaningful percentage (OmniRoute reports 0 for it)
+  return { name: String(q.name || q.label || name), kind: total > 0 ? "window" : "balance", remainingPct: clampPct(pct), used, total, remaining, resetAt: q.resetAt || q.resetsAt || q.nextResetAt || q.reset_at || null };
 }
 
 function normProvider(p) {
@@ -36,7 +37,7 @@ function normalize(j) {
   const current = normProvider(j.provider) || null;
   if (current && !providers.some((p) => p.id && p.id === current.id)) providers.unshift(current);
   const pcts = providers.map((p) => p.remainingPct).filter((x) => x != null);
-  return { providers, current, personal: j.personal || null, raw: j,
+  return { providers, current, personal: j.personal || null, raw: j, known: pcts.length,
     overallPct: pcts.length ? pcts.reduce((a, b) => a + b, 0) / pcts.length : null };
 }
 

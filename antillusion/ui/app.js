@@ -495,11 +495,15 @@ function modelPicker(anchor) {
     let list = S.models.filter((m) => (!q || (m.id + " " + m.name).toLowerCase().includes(q)));
     if (filter === "fav") list = list.filter((m) => fav.has(m.id)); if (filter === "vision") list = list.filter((m) => m.architecture.input_modalities.includes("image"));
     list = [...list.filter((m) => fav.has(m.id)), ...list.filter((m) => !fav.has(m.id))].slice(0, 120);
-    listEl.replaceChildren(...(list.length ? list.map((m) => h("div", { class: "mrow" + (m.id === v.meta.model ? " on" : ""), onclick: () => { closePop(); patchSession({ model: m.id }); } },
+    const rowFor = (m) => h("div", { class: "mrow" + (m.id === v.meta.model ? " on" : ""), onclick: () => { closePop(); patchSession({ model: m.id }); } },
       h("button", { class: "star" + (fav.has(m.id) ? " on" : ""), title: "مفضّلة", onclick: async (e) => { e.stopPropagation(); fav.has(m.id) ? fav.delete(m.id) : fav.add(m.id); S.settings = await call("settings:set", { favorites: [...fav] }) || S.settings; draw(); }, html: ico("star", 14) }),
       h("div", { class: "mmain" }, h("b", { dir: "ltr" }, m.name), h("small", { dir: "ltr" }, m.id.replace(/:free$/, ""))),
       h("div", { class: "mmeta", dir: "ltr" }, h("span", { title: "نافذة السياق" }, fmtTok(m.context_length)), m.architecture.input_modalities.includes("image") ? h("span", { title: "يقرأ الصور", html: ico("eye", 12) }) : null,
-        (m.supported_parameters || []).includes("reasoning") ? h("span", { title: "يدعم التفكير", html: ico("brain", 12) }) : null, h("span", { class: +m.pricing.prompt === 0 ? "free" : "", title: +m.pricing.prompt === 0 ? "متاح للاستخدام بمفتاحك" : "سعر الإدخال / الإخراج لكل مليون رمز" }, price(m))))) : [h("div", { class: "side-empty" }, "لا نتائج")]));
+        (m.supported_parameters || []).includes("reasoning") ? h("span", { title: "يدعم التفكير", html: ico("brain", 12) }) : null, h("span", { class: +m.pricing.prompt === 0 ? "free" : "", title: +m.pricing.prompt === 0 ? "متاح للاستخدام بمفتاحك" : "سعر الإدخال / الإخراج لكل مليون رمز" }, price(m))));
+    const favList = list.filter((m) => fav.has(m.id)), rest = list.filter((m) => !fav.has(m.id)), kids = [];
+    if (favList.length) kids.push(h("div", { class: "mgroup" }, "المفضّلة"), ...favList.map(rowFor));
+    if (rest.length) { if (favList.length) kids.push(h("div", { class: "mgroup" }, "كل النماذج")); kids.push(...rest.map(rowFor)); }
+    listEl.replaceChildren(...(kids.length ? kids : [h("div", { class: "side-empty" }, "لا نتائج")]));
   };
   const filters = h("div", { class: "seg small" }, [["all", "الكل"], ["fav", "المفضّلة"], ["vision", "يقرأ الصور"]].map(([k, l]) => h("button", { class: k === filter ? "on" : "", onclick: (e) => { filter = k; [...e.target.parentNode.children].forEach((b) => b.classList.toggle("on", b === e.target)); draw(); } }, l)));
   const el = h("div", { class: "model-pop" }, search, h("div", { class: "mp-row" }, filters, h("button", { class: "mini", title: "تحديث القائمة من OpenRouter", onclick: async () => { const l = await call("models:refresh"); if (l) { S.models = l; draw(); toast(`${l.length} نموذجاً متاحاً`); } }, html: ico("reload", 13) })), listEl);
@@ -618,85 +622,149 @@ async function handlePreviewRead(e) {
 
 /* ---------- modals: settings, usage, library ---------- */
 
-async function settingsModal() {
+const setRow = (label, hint, ctl, tight) => h("div", { class: "set-row" }, h("div", { class: "lbl" }, h("b", null, label), hint ? h("small", null, hint) : null), h("div", { class: "set-ctl" + (tight ? " tight" : "") }, ctl));
+const switchEl = (checked, onchange) => h("label", { class: "sw2" }, h("input", { type: "checkbox", checked: !!checked, onchange: (e) => onchange(e.target.checked) }), h("i"));
+const segEl = (opts, value, onpick) => { const el = h("div", { class: "seg" }, Object.entries(opts).map(([k, l]) => h("button", { type: "button", class: String(value) === k ? "on" : "", onclick: () => { [...el.children].forEach((b) => b.classList.toggle("on", b === el.children[Object.keys(opts).indexOf(k)])); onpick(k); } }, l))); return el; };
+
+async function settingsModal(openTab) {
   const s = S.settings;
-  const save = async (patch) => { const r = await call("settings:set", patch); if (r) { S.settings = r; applyTheme(); } };
-  const row = (label, hint, ctl) => h("label", { class: "srow" }, h("div", null, h("b", null, label), hint ? h("small", null, hint) : null), ctl);
+  const save = async (patch) => { const r = await call("settings:set", patch); if (r) { S.settings = r; applyTheme(); } return r; };
+  const R = (label, hint, ctl, o = {}) => ({ label, hint, ctl, o });
   const sel = (key, opts) => h("select", { class: "field", onchange: (e) => save({ [key]: e.target.value }) }, Object.entries(opts).map(([k, l]) => h("option", { value: k, selected: String(s[key]) === k }, l)));
   const num = (key, min, max, step = 1) => h("input", { class: "field num", type: "number", min, max, step, value: s[key], dir: "ltr", onchange: (e) => save({ [key]: Math.max(min, Math.min(max, +e.target.value || 0)) }) });
-  const keyInp = h("input", { class: "field", type: "password", dir: "ltr", placeholder: s.hasKey ? "•••••••• (محفوظ ومشفّر — اكتب مفتاحاً جديداً للاستبدال)" : "sk-or-v1-…", autocomplete: "off" });
+  const keyInp = h("input", { class: "field", type: "password", dir: "ltr", placeholder: s.hasKey ? "•••••••• محفوظ ومشفّر — اكتب مفتاحاً جديداً للاستبدال" : "sk-or-v1-…", autocomplete: "off" });
   const setUrl = async (u) => {
-    await save({ baseUrl: u }); S.models = await call("models:refresh") || []; renderControls();
+    await save({ baseUrl: u }); S.models = await call("models:refresh") || []; renderControls(); pollQuota();
     toast(S.models.length ? `${S.models.length} نموذجاً متاحاً` : "لا نماذج على هذا العنوان — تأكد أن السيرفر يعمل", S.models.length ? "" : "err");
     const v = cur(); if (v && !modelOf(v.meta.model) && S.models[0] && !v.running) patchSession({ model: S.models[0].id });
   };
   const PRESETS = { omniroute: "http://localhost:20128/v1", openrouter: "https://openrouter.ai/api/v1", ollama: "http://localhost:11434/v1", vllm: "http://localhost:8000/v1" };
   const urlInp = h("input", { class: "field", dir: "ltr", value: s.baseUrl, placeholder: "http://IP:8000/v1", onchange: (e) => setUrl(e.target.value.trim()) });
   const preset = Object.keys(PRESETS).find((k) => PRESETS[k] === s.baseUrl) || "custom";
-  const keyInfo = h("small", { class: "muted" }, s.hasKey ? "جارٍ فحص المفتاح…" : "لا يوجد مفتاح بعد.");
-  const keyWarn = s.keyUnencrypted ? h("small", { class: "upd-note bad" }, "⚠ تشفير نظام التشغيل غير متاح على هذا الجهاز، فالمفتاح محفوظ كنص عادي في ملف الإعدادات. لا تشارك مجلد بيانات التطبيق.") : null;
-  const check = async () => { const u = await call("usage:get"); if (!u) return; const k = u.key || {}; keyInfo.textContent = k.error ? "⚠ " + k.error : `المفتاح يعمل · ${k.label || "المزوّد"}${k.usage ? ` · استُخدم ${fmtCost(k.usage)}` : ""}${k.limit != null ? ` من حدّ ${fmtCost(k.limit)}` : ""}${k.free_model_daily_requests ? ` · طلبات اليوم ${k.free_model_daily_requests.used}/${k.free_model_daily_requests.limit}` : ""}`; };
+  const keyText = h("span", null, s.hasKey ? "جارٍ فحص المفتاح…" : "لا يوجد مفتاح بعد."), keyNote = h("div", { class: "set-note" }, h("i", { class: "dot" }), keyText);
+  const check = async () => {
+    const u = await call("usage:get"); if (!u) return; const k = u.key || {}, bad = !!k.error; keyNote.className = "set-note " + (bad ? "bad" : "ok");
+    keyText.textContent = bad ? k.error : S.settings.ownServer ? `متصل · ${k.label || "السيرفر"}` : `المفتاح يعمل · ${k.label || "OpenRouter"}${k.usage ? ` · استُخدم ${fmtCost(k.usage)}` : ""}${k.limit != null ? ` من حدّ ${fmtCost(k.limit)}` : ""}${k.free_model_daily_requests ? ` · طلبات اليوم ${k.free_model_daily_requests.used}/${k.free_model_daily_requests.limit}` : ""}`;
+  };
   if (s.hasKey) check();
-  modal("الإعدادات", h("div", { class: "settings" },
-    h("h4", null, "الاتصال"),
-    row("مفتاح API", "مفتاح OmniRoute أو OpenRouter — يُحفظ مشفّراً على جهازك", h("div", { class: "keybox" }, keyInp, h("button", { class: "btn primary", onclick: async () => { if (!keyInp.value.trim()) return; const r = await call("key:set", keyInp.value); if (r) { S.settings = r; keyInp.value = ""; keyInp.placeholder = "•••••••• (محفوظ)"; toast("تم حفظ المفتاح"); check(); } } }, "حفظ"))),
-    h("div", { class: "srow" }, h("span"), keyInfo), keyWarn,
-    row("مصدر النماذج", "سيرفرك أو جهازك: بلا مفتاح، بلا اشتراك، بلا حدّ طلبات", h("select", { class: "field", onchange: (e) => { const u = PRESETS[e.target.value]; if (u) { urlInp.value = u; setUrl(u); } else { urlInp.focus(); urlInp.select(); } } },
-      [["omniroute", "OmniRoute (المحلي :20128)"], ["openrouter", "OpenRouter"], ["ollama", "Ollama على هذا الجهاز"], ["vllm", "vLLM على هذا الجهاز"], ["custom", "سيرفري السحابي (اكتب العنوان)"]].map(([k, l]) => h("option", { value: k, selected: k === preset }, l)))),
-    row("عنوان الـAPI", "أي سيرفر متوافق مع OpenAI: OmniRoute، vLLM، Ollama", urlInp),
-    h("h4", null, "الوكيل"),
-    row("الوضع الافتراضي", null, sel("mode", { agent: "كود", plan: "خطة", ask: "سؤال" })),
-    row("الصلاحيات الافتراضية", "تُطبَّق على الجلسات الجديدة", sel("perm", { ask: PERMS.ask[0], edits: PERMS.edits[0], auto: PERMS.auto[0] })),
-    row("الطرفية", "auto = Git Bash إن وُجد وإلا PowerShell", sel("shell", { auto: "تلقائي", bash: "Git Bash", powershell: "PowerShell", cmd: "cmd" })),
-    row("أقصى طول للرد (رموز)", "ارفعه للملفات الطويلة", num("maxTokens", 1000, 128000, 1000)),
-    row("أقصى خطوات في الدورة", null, num("maxSteps", 5, 400)),
-    row("الخبير", "نموذج قويّ يضع خطة البناء ويتدخّل عند تعثّر النموذج المتاح. مدفوع من رصيد مفتاحك (سنتات قليلة لكل استشارة)", h("input", { type: "checkbox", class: "sw", checked: !!s.expert, onchange: (e) => save({ expert: e.target.checked }) })),
-    row("نموذج الخبير", "أي معرّف من OpenRouter", h("input", { class: "field", dir: "ltr", value: s.expertModel || "anthropic/claude-opus-5.5", onchange: (e) => save({ expertModel: e.target.value.trim() }) })),
-    row("إظهار كل النماذج", "المتاحة لمفتاحك فقط افتراضياً؛ فعّله لإظهار المدفوعة أيضاً", h("input", { type: "checkbox", class: "sw", checked: s.freeOnly === false, onchange: async (e) => { await save({ freeOnly: !e.target.checked }); S.models = await call("models:refresh") || S.models; renderControls(); } })),
-    row("فتح الاستعراض تلقائياً", "عند تشغيل الوكيل خادماً محلياً", h("input", { type: "checkbox", class: "sw", checked: s.autoPreview !== false, onchange: (e) => save({ autoPreview: e.target.checked }) })),
-    h("h4", null, "السياق والإنفاق"),
-    row("ضغط السياق عند (%)", "يلخّص المحادثة القديمة تلقائياً", num("compactAt", 30, 95)),
-    row("حدّ إنفاق الجلسة ($)", "0 = بلا حد", num("sessionBudget", 0, 1000, 0.5)),
-    h("h4", null, "المظهر والتعليمات"),
-    row("السِّمة", null, sel("theme", { dark: "داكنة", light: "فاتحة" })),
-    row("موضع لوحة الاستعراض", "الجهة التي تُفتح فيها بجانب المحادثة", sel("panelSide", { right: "يمين المحادثة", left: "يسار المحادثة (المحادثة تنكمش لليمين)" })),
-    row("بيانات التدريب", "المحادثات الناجحة بصيغة JSONL لتدريب نموذجك (علّم المحادثة «ناجحة» من قائمة ⋮)", h("button", { class: "btn", onclick: async () => { const r = await call("train:export"); if (r) toast(`صُدّر ${r.examples} محادثة للتدريب`); } }, "تصدير JSONL")),
-    row("معالج الإعداد", "السِّمة، المفتاح، النموذج، الصلاحيات، المجلد", h("button", { class: "btn", onclick: () => { document.querySelector(".modal-wrap").remove(); setupWizard(); } }, "إعادة تشغيل الإعداد")),
-    h("label", { class: "scol" }, h("b", null, "تعليمات دائمة للوكيل"), h("small", null, "تُضاف لكل جلسة. لتعليمات خاصة بمشروع ضع ملف AGENTS.md في جذره."),
-      h("textarea", { class: "field", rows: 4, dir: "auto", placeholder: "مثال: استخدم TypeScript دائماً، واكتب التعليقات بالعربية.", onchange: (e) => save({ instructions: e.target.value }) }, s.instructions || ""))), "wide");
+  const keyWarn = s.keyUnencrypted ? h("div", { class: "set-note bad" }, h("i", { class: "dot" }), "تشفير نظام التشغيل غير متاح على هذا الجهاز، فالمفتاح محفوظ كنص عادي في ملف الإعدادات. لا تشارك مجلد بيانات التطبيق.") : null;
+
+  // version / updates card
+  const verName = h("b", null, "Antillusion"), verSub = h("small", { dir: "ltr" }, "…"), verPill = h("span", { class: "upd-pill" }, "");
+  const drawVer = async () => { const v = await call("app:version"); if (v) { verName.textContent = "Antillusion v" + (v.version || "?"); verSub.textContent = [v.commit, v.channel === "dev" ? "dev" : v.mode === "git" ? v.branch : "", v.run ? "build #" + v.run : ""].filter(Boolean).join(" · "); } const st = U.st || {}; const m = { idle: ["لم يُفحص بعد", ""], checking: ["جارٍ الفحص…", "busy"], installing: ["جارٍ التحديث…", "busy"], uptodate: ["أنت على أحدث إصدار", "ok"], available: ["يتوفر تحديث", "new"], ready: ["جاهز — أعد التشغيل", "new"], error: ["تعذّر الفحص", "bad"] }[st.phase] || ["", ""]; verPill.textContent = m[0]; verPill.className = "upd-pill " + m[1]; };
+  drawVer(); const vl = () => { if (!document.body.contains(verName)) U.listeners.delete(vl); else drawVer(); }; U.listeners.add(vl);
+  const verCard = h("div", { class: "ver-card" }, h("div", { class: "vlogo", html: ico("download", 26) }), h("div", { class: "grow" }, verName, verSub), verPill,
+    h("button", { class: "btn small", onclick: () => call("update:check") }, "افحص الآن"), h("button", { class: "btn small primary", onclick: () => updateModal() }, "التفاصيل"));
+
+  const themeCard = (k, l, bg) => h("button", { type: "button", class: "theme-card" + (s.theme === k || (!s.theme && k === "dark") ? " on" : ""), onclick: async (e) => { await save({ theme: k }); [...e.currentTarget.parentNode.children].forEach((b) => b.classList.toggle("on", b === e.currentTarget)); } }, h("div", { class: "sw-prev", style: `background:${bg}` }), l);
+  const sections = [
+    { id: "conn", title: "الاتصال", icon: "globe", sub: "المزوّد، المفتاح وعنوان السيرفر", rows: [
+      R("مفتاح API", "مفتاح OmniRoute أو OpenRouter — يُحفظ مشفّراً على جهازك", h("div", { class: "keybox", style: "display:flex;gap:8px;width:100%" }, keyInp, h("button", { class: "btn primary", onclick: async () => { if (!keyInp.value.trim()) return; const r = await call("key:set", keyInp.value); if (r) { S.settings = r; keyInp.value = ""; keyInp.placeholder = "•••••••• محفوظ"; toast("تم حفظ المفتاح"); check(); } } }, "حفظ"))),
+      R("مصدر النماذج", "سيرفرك أو جهازك: بلا مفتاح، بلا اشتراك، بلا حدّ طلبات", h("select", { class: "field", onchange: (e) => { const u = PRESETS[e.target.value]; if (u) { urlInp.value = u; setUrl(u); } else { urlInp.focus(); urlInp.select(); } } },
+        [["omniroute", "OmniRoute (المحلي :20128)"], ["openrouter", "OpenRouter"], ["ollama", "Ollama على هذا الجهاز"], ["vllm", "vLLM على هذا الجهاز"], ["custom", "سيرفري السحابي (اكتب العنوان)"]].map(([k, l]) => h("option", { value: k, selected: k === preset }, l)))),
+      R("عنوان الـAPI", "أي سيرفر متوافق مع OpenAI: OmniRoute، vLLM، Ollama", urlInp),
+    ], notes: [keyNote, keyWarn] },
+    { id: "agent", title: "الوكيل", icon: "bolt", sub: "السلوك الافتراضي والصلاحيات والأدوات", rows: [
+      R("الوضع الافتراضي", "كيف تبدأ الجلسات الجديدة", segEl({ agent: "كود", plan: "خطة", ask: "سؤال" }, s.mode, (k) => save({ mode: k })), { tight: true }),
+      R("الصلاحيات الافتراضية", "تُطبَّق على الجلسات الجديدة", sel("perm", { ask: PERMS.ask[0], edits: PERMS.edits[0], auto: PERMS.auto[0] })),
+      R("الطرفية", "auto = Git Bash إن وُجد وإلا PowerShell", sel("shell", { auto: "تلقائي", bash: "Git Bash", powershell: "PowerShell", cmd: "cmd" })),
+      R("أقصى طول للرد (رموز)", "ارفعه للملفات الطويلة", num("maxTokens", 1000, 128000, 1000), { tight: true }),
+      R("أقصى خطوات في الدورة", "حدّ أمان لحلقة الوكيل", num("maxSteps", 5, 400), { tight: true }),
+      R("فتح الاستعراض تلقائياً", "عند تشغيل الوكيل خادماً محلياً", switchEl(s.autoPreview !== false, (v) => save({ autoPreview: v })), { tight: true }),
+      R("تعليمات دائمة للوكيل", "تُضاف لكل جلسة. لتعليمات خاصة بمشروع ضع ملف AGENTS.md في جذره.", h("textarea", { class: "field", rows: 4, dir: "auto", placeholder: "مثال: استخدم TypeScript دائماً، واكتب التعليقات بالعربية.", onchange: (e) => save({ instructions: e.target.value }) }, s.instructions || ""), { col: true }),
+    ] },
+    { id: "models", title: "النماذج والخبير", icon: "brain", sub: "أي النماذج تظهر، ونموذج الاستشارة القوي", rows: [
+      R("الخبير", "نموذج قويّ يضع خطة البناء ويتدخّل عند تعثّر النموذج المتاح. مدفوع من رصيد مفتاحك (سنتات قليلة لكل استشارة)", switchEl(!!s.expert, (v) => save({ expert: v })), { tight: true }),
+      R("نموذج الخبير", "أي معرّف من OpenRouter", h("input", { class: "field", dir: "ltr", value: s.expertModel || "anthropic/claude-opus-5.5", onchange: (e) => save({ expertModel: e.target.value.trim() }) })),
+      R("إظهار كل النماذج", "المتاحة لمفتاحك فقط افتراضياً؛ فعّله لإظهار المدفوعة أيضاً", switchEl(s.freeOnly === false, async (v) => { await save({ freeOnly: !v }); S.models = await call("models:refresh") || S.models; renderControls(); }), { tight: true }),
+    ] },
+    { id: "ctx", title: "السياق والإنفاق", icon: "chart", sub: "ضغط المحادثات وحدود التكلفة", rows: [
+      R("ضغط السياق عند (%)", "يلخّص المحادثة القديمة تلقائياً عند بلوغ هذه النسبة من النافذة", num("compactAt", 30, 95), { tight: true }),
+      R("حدّ إنفاق الجلسة ($)", "يتوقف الوكيل عند بلوغه — 0 = بلا حد", num("sessionBudget", 0, 1000, 0.5), { tight: true }),
+    ] },
+    { id: "look", title: "المظهر", icon: "sun", sub: "السِّمة وتخطيط الواجهة", rows: [
+      R("السِّمة", "داكنة أو فاتحة", h("div", { class: "theme-cards" }, themeCard("dark", "داكنة", "linear-gradient(135deg,#191b1f,#0e0f11)"), themeCard("light", "فاتحة", "linear-gradient(135deg,#ffffff,#e9eaee)")), { tight: true }),
+      R("موضع لوحة الاستعراض", "الجهة التي تُفتح فيها بجانب المحادثة", segEl({ right: "يمين", left: "يسار" }, s.panelSide || "right", (k) => save({ panelSide: k })), { tight: true }),
+    ] },
+    { id: "update", title: "التحديثات", icon: "download", sub: "النسخة الحالية والتحديث التلقائي", head: verCard, dot: () => ["available", "ready"].includes((U.st || {}).phase), rows: [
+      R("تحديث تلقائي", "يفحص كل 3 ساعات وعند التشغيل، وينزّل التحديث عندما لا يكون الوكيل مشغولاً — ثم يطلب منك إعادة التشغيل", switchEl(s.autoUpdate !== false, (v) => save({ autoUpdate: v })), { tight: true }),
+      R("فرع التحديث", "للنسخ المستنسخة عبر git — اتركه فارغاً لاستخدام الفرع الحالي", h("input", { class: "field", dir: "ltr", value: s.updateBranch || "", placeholder: "main", onchange: async (e) => { await save({ updateBranch: e.target.value.trim() }); call("update:check"); } })),
+    ] },
+    { id: "adv", title: "متقدّم", icon: "sliders", sub: "التدريب، الإعداد والمجلدات", rows: [
+      R("قدراتك الخاصة (Skills)", "ملفات .md تضيف قدرات جديدة للوكيل — تظهر عند كتابة / في المحادثة", h("button", { class: "btn", onclick: () => call("skills:openFolder") }, "فتح المجلد"), { tight: true }),
+      R("مكتبتك الخاصة", "أضف مراجع .md ليستفيد منها الوكيل في كل جلساتك", h("button", { class: "btn", onclick: () => call("library:openFolder") }, "فتح المجلد"), { tight: true }),
+      R("بيانات التدريب", "المحادثات الناجحة بصيغة JSONL لتدريب نموذجك (علّم المحادثة «ناجحة» من قائمة ⋮)", h("button", { class: "btn", onclick: async () => { const r = await call("train:export"); if (r) toast(`صُدّر ${r.examples} محادثة للتدريب`); } }, "تصدير JSONL"), { tight: true }),
+      R("معالج الإعداد", "السِّمة، المفتاح، النموذج، الصلاحيات، المجلد", h("button", { class: "btn", onclick: () => { document.querySelector(".modal-wrap")?.remove(); setupWizard(); } }, "إعادة تشغيل الإعداد"), { tight: true }),
+    ] },
+  ];
+
+  let tab = sections.some((x) => x.id === openTab) ? openTab : "conn";
+  const pane = h("div", { class: "set-pane" }), side = h("div", { class: "set-side" }), search = h("input", { class: "field", placeholder: "ابحث في الإعدادات…", dir: "auto", autocomplete: "off" });
+  const rowEl = (r) => h("div", { class: "set-row" + (r.o.col ? " col" : "") }, h("div", { class: "lbl" }, h("b", null, r.label), r.hint ? h("small", null, r.hint) : null), h("div", { class: "set-ctl" + (r.o.tight ? " tight" : "") }, r.ctl));
+  const draw = () => {
+    const q = search.value.trim().toLowerCase();
+    [...side.querySelectorAll(".set-tab")].forEach((b) => b.classList.toggle("on", !q && b.dataset.id === tab));
+    if (q) {
+      const hits = sections.flatMap((x) => x.rows.filter((r) => (r.label + " " + (r.hint || "")).toLowerCase().includes(q)).map((r) => [x, r]));
+      pane.replaceChildren(h("div", { class: "set-head" }, h("h3", null, "نتائج البحث"), h("p", null, hits.length ? `${hits.length} إعداداً` : "")), hits.length ? h("div", { class: "set-card" }, hits.map(([, r]) => rowEl(r))) : h("div", { class: "set-empty" }, "لا نتائج لـ «" + search.value + "»"));
+      return;
+    }
+    const x = sections.find((y) => y.id === tab);
+    pane.replaceChildren(h("div", { class: "set-head" }, h("h3", null, x.title), h("p", null, x.sub)), x.head || null, h("div", { class: "set-card" }, x.rows.map(rowEl), ...(x.notes || []).filter(Boolean)));
+    pane.scrollTop = 0;
+  };
+  side.append(h("div", { class: "set-search" }, icoEl("search", 14), search), ...sections.map((x) => h("button", { type: "button", class: "set-tab", "data-id": x.id, onclick: () => { search.value = ""; tab = x.id; draw(); } }, icoEl(x.icon, 16), x.title, x.dot && x.dot() ? h("i", { class: "dot2" }) : null)));
+  search.addEventListener("input", draw); draw();
+  modal("الإعدادات", h("div", { class: "set-wrap" }, side, pane), "xl settings-modal");
 }
 
 async function usageModal() {
-  const body = h("div", { class: "usage" }, h("div", { class: "muted" }, "جارٍ التحميل…")); modal("الاستخدام", body, "wide");
+  const body = h("div", { class: "usage" }, h("div", { class: "muted" }, "جارٍ التحميل…")); modal("الاستخدام والحصص", body, "xl");
   const u = await call("usage:get"); if (!u) return;
-  const card = (t, x) => h("div", { class: "ucard" }, h("small", null, t), h("b", { dir: "ltr" }, fmtCost(x.cost)), h("span", { dir: "ltr" }, `${fmtTok(x.prompt)} in · ${fmtTok(x.completion)} out · ${x.requests} req`));
-  const max = Math.max(...u.days.map((d) => d.cost), 1e-9), k = u.key || {};
-  const table = (rows, first) => h("table", { class: "utable" }, h("thead", null, h("tr", null, [first, "التكلفة", "إدخال", "مخزّن", "إخراج", "طلبات"].map((x) => h("th", null, x)))),
-    h("tbody", null, rows.length ? rows.map((r) => h("tr", null, h("td", { dir: "auto" }, r.label), ...[fmtCost(r.cost), fmtTok(r.prompt), fmtTok(r.cached), fmtTok(r.completion), r.requests].map((x) => h("td", { dir: "ltr" }, x)))) : h("tr", null, h("td", { colSpan: 6, class: "muted" }, "لا بيانات بعد"))));
-  const v = cur(), quotaBox = h("div", { class: "uquota" }, h("small", { class: "muted" }, "جارٍ فحص حصص OmniRoute…")); drawQuota(quotaBox);
+  const v = cur(), k = u.key || {}, own = !!S.settings.ownServer, tokOf = (x) => (x.prompt || 0) + (x.completion || 0);
+  const stat = (title, x, hero) => h("div", { class: "u-stat" + (hero ? " featured" : "") }, h("small", null, title), h("b", null, fmtTok(tokOf(x))), h("span", null, `${fmtCost(x.cost)} · ${x.requests} req`));
+  const tokensEver = tokOf(u.all);
+  // connection line (never mentions OpenRouter when the source is OmniRoute / a local server)
+  const conn = h("div", { class: "u-conn" + (k.error ? " bad" : "") }, h("i", { class: "live" }),
+    h("div", { class: "grow" }, h("b", null, k.error ? "تعذّر فحص الاتصال" : own ? (k.label || "السيرفر المحلي") : "OpenRouter" + (k.label ? ` · ${k.label}` : "")),
+      h("div", { class: "muted", style: "font-size:12px;margin-top:2px" }, k.error ? k.error : own ? "لا مفتاح مدفوع هنا — حدود كل مزوّد تظهر في الحصص أدناه" : `المستهلَك ${fmtCost(k.usage || 0)}${k.limit != null ? ` من ${fmtCost(k.limit)} (المتبقي ${fmtCost(k.limit_remaining || 0)})` : " · بلا حدّ إنفاق"}${k.free_model_daily_requests ? ` · طلبات اليوم ${k.free_model_daily_requests.used}/${k.free_model_daily_requests.limit}` : ""}`)),
+    h("code", null, S.settings.baseUrl || ""));
+  // 14-day chart with a metric switch
+  const chartHost = h("div", { class: "u-chart" }); let metric = store.get("usageMetric", "tokens");
+  const drawChart = () => {
+    const val = (d) => (metric === "cost" ? d.cost : metric === "requests" ? d.requests : tokOf(d)), fmt = (x) => (metric === "cost" ? fmtCost(x) : metric === "requests" ? String(x) : fmtTok(x)), max = Math.max(...u.days.map(val), 1e-9);
+    chartHost.replaceChildren(h("div", { class: "u-bars" }, u.days.map((d, i) => { const x = val(d); return h("div", { class: "u-bar" + (x ? "" : " zero") }, h("span", { class: "tip" }, `${d.day} · ${fmt(x)}`), h("i", { style: `height:${x ? Math.max(4, (x / max) * 100) : 3}%;animation-delay:${i * 28}ms` }), h("small", null, i % 2 ? "" : d.day.slice(3))); })));
+  };
+  const seg = segEl({ tokens: "الرموز", requests: "الطلبات", cost: "التكلفة" }, metric, (m) => { metric = m; store.set("usageMetric", m); drawChart(); });
+  drawChart();
+  const table = (rows, first) => h("div", { class: "u-table" }, h("table", { class: "utable" }, h("thead", null, h("tr", null, [first, "الرموز", "إدخال", "مخزّن", "إخراج", "طلبات", "التكلفة"].map((x) => h("th", null, x)))),
+    h("tbody", null, rows.length ? rows.map((r) => h("tr", null, h("td", { dir: "auto" }, r.label), ...[fmtTok(tokOf(r)), fmtTok(r.prompt), fmtTok(r.cached), fmtTok(r.completion), r.requests, fmtCost(r.cost)].map((x) => h("td", { dir: "ltr" }, x)))) : h("tr", null, h("td", { colSpan: 7, class: "muted" }, "لا بيانات بعد")))));
+  const quotaBox = h("div", { class: "uquota" }, h("small", { class: "muted" }, "جارٍ فحص الحصص…")); if (own || /20128/.test(S.settings.baseUrl || "")) drawQuota(quotaBox); else quotaBox.hidden = true;
   body.replaceChildren(
-    h("div", { class: "ucards" }, v ? card("هذه الجلسة", v.meta.usage) : null, card("اليوم", u.today), card("آخر 7 أيام", u.week), card("آخر 30 يوماً", u.month), card("الإجمالي", u.all)),
-    h("div", { class: "ukey" }, icoEl("shield", 15), k.error ? "تعذّر فحص المفتاح: " + k.error : h("span", null, "المفتاح ", h("code", { dir: "ltr" }, k.label || ""), ` — المستهلَك على OpenRouter: ${fmtCost(k.usage || 0)}`, k.limit != null ? ` من ${fmtCost(k.limit)} (المتبقي ${fmtCost(k.limit_remaining || 0)})` : " · بلا حدّ إنفاق", k.free_model_daily_requests ? ` · طلبات اليوم: ${k.free_model_daily_requests.used}/${k.free_model_daily_requests.limit}` : "")),
-    quotaBox,
-    h("h4", null, "آخر 14 يوماً"), h("div", { class: "ubars" }, u.days.map((d) => h("div", { class: "ubar", title: `${d.day}: ${fmtCost(d.cost)} · ${d.requests} طلب` }, h("i", { style: `height:${Math.max(d.cost ? 4 : 0, (d.cost / max) * 100)}%` }), h("small", { dir: "ltr" }, d.day.slice(3))))),
-    h("h4", null, "حسب النموذج"), table(u.byModel, "النموذج"), h("h4", null, "حسب الجلسة"), table(u.bySession, "الجلسة"));
+    h("div", { class: "u-top" }, v ? stat("هذه الجلسة", v.meta.usage, true) : null, stat("اليوم", u.today, !v), stat("آخر 7 أيام", u.week), stat("آخر 30 يوماً", u.month), stat("الإجمالي", u.all)),
+    conn, quotaBox,
+    h("div", { class: "u-sec" }, h("h4", null, "آخر 14 يوماً"), seg), chartHost,
+    h("div", { class: "u-sec" }, h("h4", null, "حسب النموذج")), table(u.byModel, "النموذج"), h("div", { class: "u-sec" }, h("h4", null, "حسب الجلسة")), table(u.bySession, "الجلسة"));
 }
 
 const pctColor = (p) => (p == null ? "var(--muted)" : p < 15 ? "var(--danger, #e5484d)" : p < 40 ? "#f5a524" : "var(--accent)");
 const fmtPct = (p) => (p == null ? "—" : p.toFixed(p < 10 ? 1 : 0) + "%");
+const fmtReset = (iso) => { const t = new Date(iso).getTime(); if (!iso || isNaN(t)) return ""; const d = t - Date.now(); if (d <= 0) return "يتجدد الآن"; const m = Math.round(d / 60000), dd = Math.floor(m / 1440), hh = Math.floor((m % 1440) / 60); return "يتجدد بعد " + (dd ? `${dd}ي ${hh}س` : hh ? `${hh}س ${m % 60}د` : `${m}د`); };
+const ringEl = (pct, label) => { const C = 2 * Math.PI * 26, off = pct == null ? C : C * (1 - pct / 100); return h("div", { class: "q-ring", html: `<svg viewBox="0 0 64 64"><circle class="bg" cx="32" cy="32" r="26"/><circle class="fg" cx="32" cy="32" r="26" stroke="${pctColor(pct)}" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg><b>${label != null ? label : fmtPct(pct)}</b>` }); };
 async function drawQuota(box) {
   const q = await call("omni:quota"); if (!q) return;
-  if (q.error) return box.replaceChildren(h("small", { class: "muted" }, "حصص OmniRoute: " + q.error));
-  const bar = (p) => h("div", { class: "qbar" }, h("i", { style: `width:${p == null ? 0 : p}%;background:${pctColor(p)}` }));
-  const cur = q.current;
+  if (q.error) return box.replaceChildren(h("div", { class: "u-conn bad" }, h("i", { class: "live" }), h("div", { class: "grow" }, "تعذّر قراءة حصص OmniRoute", h("div", { class: "muted", style: "font-size:12px;margin-top:2px" }, q.error))));
+  const cur = q.current, known = q.known || 0, total = q.providers.length;
+  const qrow = (x) => { const name = String(x.name).replace(/[_-]+/g, " "); if (x.kind === "window") return h("div", { class: "q-row" }, h("span", { class: "n" }, name), h("span", { class: "v" }, `${Math.round(x.remaining ?? 0).toLocaleString("en")} / ${Math.round(x.total).toLocaleString("en")}`),
+      h("div", { class: "q-bar" }, h("i", { style: `width:${x.remainingPct == null ? 0 : x.remainingPct}%;background:${pctColor(x.remainingPct)}` })), x.resetAt ? h("small", null, fmtReset(x.resetAt)) : null);
+    return h("div", { class: "q-row" }, h("span", { class: "n" }, name), h("span", { class: "v dim" }, x.remaining != null ? Math.round(x.remaining).toLocaleString("en") : "—")); };
   box.replaceChildren(
-    h("h4", null, "المتبقي من الحصص (OmniRoute)"),
-    h("div", { class: "qhead" },
-      h("div", { class: "ucard" }, h("small", null, "المجموع المتبقي (متوسط كل المزودين)"), h("b", { dir: "ltr" }, fmtPct(q.overallPct)), bar(q.overallPct)),
-      h("div", { class: "ucard" }, h("small", null, "المزوّد الحالي"), h("b", { dir: "ltr" }, cur ? cur.provider : "—"), h("span", { dir: "auto" }, cur ? `${cur.plan ? cur.plan + " · " : ""}${fmtPct(cur.remainingPct)} متبقٍ` : "لم يُستخدم بعد"))),
-    ...(q.providers.length ? q.providers.map((p) => h("div", { class: "qprov" },
-      h("div", { class: "qrow" }, h("b", { dir: "ltr" }, p.provider + (cur && p.id && p.id === cur.id ? " ●" : "")), h("span", { dir: "ltr" }, (p.plan ? p.plan + " · " : "") + fmtPct(p.remainingPct))), bar(p.remainingPct),
-      ...p.quotas.map((x) => h("div", { class: "qrow sub", dir: "ltr" }, h("span", null, x.name), h("span", null, x.total != null && x.remaining != null ? `${Math.round(x.remaining).toLocaleString()} / ${Math.round(x.total).toLocaleString()}` : fmtPct(x.remainingPct), x.resetAt ? " · reset " + new Date(x.resetAt).toLocaleString() : ""))))) : [h("small", { class: "muted" }, "لا توجد بيانات حصص مخزّنة بعد — أرسل رسالة عبر OmniRoute ثم أعد المحاولة.")]),
+    h("div", { class: "u-sec" }, h("h4", null, "المتبقي من الحصص"), h("span", { class: "muted", style: "font-size:12.5px" }, known ? `${known} من ${total} مزوّد لديه حصة محددة` : "لا حصص محددة بعد")),
+    h("div", { class: "q-grid", style: "margin-top:10px" },
+      q.providers.length ? [
+        h("div", { class: "q-card sum" }, ringEl(q.overallPct), h("div", null, h("h5", null, "المجموع المتبقي"), h("div", { class: "plan" }, known ? "متوسط المزوّدين الذين لهم حصة محددة" : "ستظهر النسبة عند توفر حصة"))),
+        ...q.providers.map((p) => h("div", { class: "q-card" + (cur && p.id && p.id === cur.id ? " cur" : "") }, ringEl(p.remainingPct, p.remainingPct == null ? "—" : null), h("h5", null, cur && p.id && p.id === cur.id ? h("em", null, "الحالي") : null, p.provider), h("div", { class: "plan" }, p.plan || ""), h("div", { class: "q-rows" }, p.quotas.map(qrow)))),
+      ] : h("div", { class: "muted" }, "لا توجد بيانات حصص مخزّنة بعد — أرسل رسالة عبر OmniRoute ثم أعد المحاولة.")),
     h("details", { class: "qraw" }, h("summary", null, "البيانات الخام من OmniRoute (للتشخيص)"), h("pre", { dir: "ltr" }, JSON.stringify(q.raw, null, 2))));
 }
 
@@ -705,7 +773,7 @@ async function drawQuota(box) {
 const Q = { data: null, warned: new Set() };
 function quotaChip() {
   const d = Q.data; if (!d || d.error || !d.providers || !d.providers.length) return null;
-  const cur = d.current, pct = cur && cur.remainingPct != null ? cur.remainingPct : d.overallPct;
+  const cur = d.current, pct = cur ? cur.remainingPct : d.overallPct;
   return h("button", { class: "hchip quiet qchip", title: "المتبقي من حصص OmniRoute — اضغط للتفاصيل", onclick: usageModal },
     h("i", { class: "qdot", style: `background:${pctColor(pct)}` }), h("span", { dir: "ltr" }, `${cur ? cur.provider : "OmniRoute"} · ${fmtPct(pct)}`));
 }
@@ -727,10 +795,10 @@ const U = { st: { phase: "idle" }, listeners: new Set() };
 /** Bottom-corner badge with the exact build that is running; refreshed after every update/restart. */
 async function drawVersionBadge() {
   const v = await call("app:version"), b = $("#verBadge"); if (!v || !b) return;
-  const parts = ["v" + (v.version || "?")]; if (v.run) parts.push("#" + v.run); if (v.commit) parts.push(v.commit);
+  const parts = ["v" + (v.version || "?")]; if (v.commit) parts.push(v.commit);
   const tag = v.channel === "dev" ? "dev" : v.mode === "git" ? v.branch : "";
   b.replaceChildren(h("i", { class: "vdot" }), h("span", { dir: "ltr" }, parts.join(" · ") + (tag ? " · " + tag : "")));
-  b.title = `Antillusion ${parts.join(" ")}${v.builtAt ? "\nبُنيت: " + new Date(v.builtAt).toLocaleString("ar") : ""}\nاضغط لفتح التحديثات`;
+  b.title = `Antillusion ${parts.join(" ")}${v.run ? "\nبناء رقم " + v.run : ""}${v.builtAt ? "\nبُنيت: " + new Date(v.builtAt).toLocaleString("ar") : ""}\nاضغط لفتح التحديثات`;
   b.hidden = false; b.onclick = updateModal;
   const key = parts.join("|"), seen = S.settings.lastVersionKey;
   if (seen !== key) { if (seen) toast(`تم تحديث Antillusion إلى ${parts.join(" · ")}`); const r = await call("settings:set", { lastVersionKey: key }); if (r) S.settings = r; }
@@ -779,11 +847,9 @@ async function updateModal() {
     if (st.notes) parts.push(h("h4", null, "ملاحظات الإصدار"), h("pre", { class: "upd-notes", dir: "auto" }, st.notes));
     if (st.installed) parts.push(h("div", { class: "upd-note ok" }, "حُدِّثت الاعتماديات (npm install) تلقائياً."));
     const s = S.settings || {};
-    parts.push(h("h4", null, "الإعدادات"),
-      h("label", { class: "srow" }, h("div", null, h("b", null, "تحديث تلقائي"), h("small", null, "يفحص كل 3 ساعات وعند التشغيل، وينزّل التحديث عندما لا يكون الوكيل مشغولاً — ثم يطلب منك إعادة التشغيل")),
-        h("input", { type: "checkbox", checked: s.autoUpdate !== false, onchange: async (e) => { const r = await call("settings:set", { autoUpdate: e.target.checked }); if (r) S.settings = r; } })),
-      st.mode === "git" ? h("label", { class: "srow" }, h("div", null, h("b", null, "فرع التحديث"), h("small", null, "اتركه فارغاً لاستخدام الفرع الحالي")),
-        h("input", { class: "field", dir: "ltr", value: s.updateBranch || "", placeholder: st.branch || "main", onchange: async (e) => { const r = await call("settings:set", { updateBranch: e.target.value.trim() }); if (r) { S.settings = r; call("update:check"); } } })) : null);
+    parts.push(h("div", { class: "set-card", style: "margin-top:16px" },
+      setRow("تحديث تلقائي", "يفحص كل 3 ساعات وعند التشغيل، وينزّل التحديث عندما لا يكون الوكيل مشغولاً — ثم يطلب منك إعادة التشغيل", switchEl(s.autoUpdate !== false, async (v) => { const r = await call("settings:set", { autoUpdate: v }); if (r) S.settings = r; }), true),
+      st.mode === "git" ? setRow("فرع التحديث", "اتركه فارغاً لاستخدام الفرع الحالي", h("input", { class: "field", dir: "ltr", value: s.updateBranch || "", placeholder: st.branch || "main", onchange: async (e) => { const r = await call("settings:set", { updateBranch: e.target.value.trim() }); if (r) { S.settings = r; call("update:check"); } } })) : null));
     body.replaceChildren(...parts.filter(Boolean));
   };
   U.listeners.add(draw); draw(U.st);
@@ -814,14 +880,15 @@ async function libraryModal() {
   draw(); showCard(lib.cards.find((c) => c.id === "scaffolds") || lib.cards[0]);
 }
 
+const relTime = (t) => { const d = Date.now() - t, m = Math.round(d / 60000); if (m < 1) return "الآن"; if (m < 60) return `قبل ${m} د`; const hh = Math.round(m / 60); if (hh < 24) return `قبل ${hh} س`; const dd = Math.round(hh / 24); if (dd < 30) return `قبل ${dd} ي`; return new Date(t).toLocaleDateString("ar"); };
 function historyModal() {
   const search = h("input", { class: "field", placeholder: "ابحث في كل المحادثات…", dir: "auto" }), listEl = h("div", { class: "hist" });
   const draw = () => { const q = search.value.trim().toLowerCase();
     const list = S.order.filter((m) => !q || m.title.toLowerCase().includes(q) || String(m.cwd).toLowerCase().includes(q)).sort((x, y) => y.updated - x.updated);
     listEl.replaceChildren(...(list.length ? list.map((m) => h("button", { class: "hist-row", onclick: () => { md.close(); openSession(m.id); } }, h("b", { dir: "auto" }, m.title),
-      h("small", null, h("span", { dir: "ltr" }, shortPath(m.cwd)), ` · ${new Date(m.updated).toLocaleString("ar")} · ${fmtCost(m.usage.cost)}`))) : [h("div", { class: "side-empty" }, "لا نتائج")])); };
+      h("small", null, h("span", { class: "chip-path", dir: "ltr" }, icoEl("folder", 11), shortPath(m.cwd)), h("span", null, relTime(m.updated)), h("span", { dir: "ltr" }, fmtCost(m.usage.cost) + " · " + fmtTok((m.usage.prompt || 0) + (m.usage.completion || 0)))))) : [h("div", { class: "side-empty" }, h("div", { class: "empty-art" }), q ? "لا نتائج لـ «" + search.value + "»" : "لا محادثات بعد")])); };
   search.addEventListener("input", draw);
-  const md = modal("Conversation History", h("div", { class: "ask" }, search, listEl)); draw(); search.focus();
+  const md = modal("سجل المحادثات", h("div", { class: "ask" }, search, listEl), "wide"); draw(); search.focus();
 }
 
 async function tasksModal() {

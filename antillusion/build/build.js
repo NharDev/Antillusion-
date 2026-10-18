@@ -22,8 +22,14 @@ const step = (s) => console.log("\n== " + s);
   if (process.env.CI && fs.existsSync(path.join(app, "icon.ico"))) console.log("CI: using the committed icon.ico");
   else run(electron, [path.join(__dirname, "make-icon.js")], { env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "ELECTRON_RUN_AS_NODE")) });
 
-  // tells the installed app which channel/commit it is, so the in-app updater knows what "newer" means
-  fs.writeFileSync(path.join(app, "build-info.json"), JSON.stringify({ channel: process.env.BUILD_CHANNEL || "stable", commit: process.env.GITHUB_SHA || "", run: process.env.GITHUB_RUN_NUMBER || "", builtAt: new Date().toISOString() }));
+  // tells the installed app which version/channel/commit it is, so the badge and the in-app updater know what "newer" means.
+  // Version = MAJOR.MINOR from package.json + PATCH = CI run number (a tag vX.Y.Z pins it exactly).
+  const pkgJson = JSON.parse(fs.readFileSync(path.join(app, "package.json"), "utf8"));
+  const tag = (process.env.GITHUB_REF_NAME || "").match(/^v(\d+\.\d+\.\d+)$/);
+  let patch = process.env.GITHUB_RUN_NUMBER; if (!patch) { try { patch = execFileSync("git", ["rev-list", "--count", "HEAD"], { cwd: app }).toString().trim(); } catch { patch = "0"; } }
+  const fullVersion = tag ? tag[1] : pkgJson.version.split(".").slice(0, 2).join(".") + "." + patch;
+  fs.writeFileSync(path.join(app, "build-info.json"), JSON.stringify({ version: fullVersion, channel: process.env.BUILD_CHANNEL || "stable", commit: process.env.GITHUB_SHA || "", run: process.env.GITHUB_RUN_NUMBER || "", builtAt: new Date().toISOString() }));
+  console.log("version", fullVersion);
 
   step(`package (Electron ${version})`);
   const { packager } = await import(require("url").pathToFileURL(path.join(tools, "@electron", "packager", "dist", "index.js")).href);   // ESM-only package
@@ -32,6 +38,8 @@ const step = (s) => console.log("\n== " + s);
     icon: path.join(app, "icon.ico"), appCopyright: "Antillusion", win32metadata: { CompanyName: "Antillusion", FileDescription: "Antillusion", ProductName: "Antillusion" },
     ignore: [/^\/test($|\/)/, /^\/build($|\/)/, /^\/installer($|\/)/, /^\/model($|\/)/,/^\/node_modules($|\/)/, /^\/\.env/, /\.bat$/, /^\/package-lock\.json$/],
   });
+
+  { const f = path.join(packed, "resources", "app", "package.json"); const j = JSON.parse(fs.readFileSync(f, "utf8")); j.version = fullVersion; fs.writeFileSync(f, JSON.stringify(j, null, 2)); }   // Windows "Apps" list + updater see the real version
 
   // Chromium ships ~55 UI languages; Antillusion only needs Arabic and English (saves ~35 MB unpacked, faster download and unpack)
   const loc = path.join(packed, "locales");
