@@ -144,7 +144,7 @@ function createAgent({ store, emit, getKey, ui }) {
           method: "POST", signal, body: JSON.stringify(wire(body), (k, v) => (k === "__sid" ? undefined : v)),
           headers: { ...(key ? { Authorization: "Bearer " + key } : {}), "Content-Type": "application/json", "HTTP-Referer": "https://antillusion.app", "X-Title": "Antillusion" },
         });
-      } catch (e) { if (e.name === "AbortError") throw e; if (attempt >= (isOR ? 3 : 1)) throw isOR ? e : new Error(`تعذّر الاتصال بالسيرفر ${base} — تأكد أنه يعمل وأن العنوان صحيح.`); await sleep(1200 * 2 ** attempt, signal); continue; }
+      } catch (e) { if (e.name === "AbortError") throw e; if (attempt >= (isOR ? 3 : 1)) throw isOR ? e : Object.assign(new Error(`تعذّر الاتصال بالسيرفر ${base} — تأكد أنه يعمل وأن العنوان صحيح.`), { conn: true }); await sleep(1200 * 2 ** attempt, signal); continue; }
       if (r.ok) return r;
       const text = await r.text();
       // a router (OmniRoute) that already tried every provider says so with per-provider codes: retrying the same model only wastes seconds
@@ -167,9 +167,13 @@ function createAgent({ store, emit, getKey, ui }) {
   /** One streamed model call. Returns { message, toolCalls, finish }. */
   // own servers: the session model first, then favourites, then the router's general-purpose combos, then anything listed
   const PREFERRED = ["auto/best-coding", "auto/best-coding-fast", "auto/best-fast", "auto/pro-coding", "auto/best-reasoning", "auto/best-chat", "openrouter/auto"];
-  function fallbackOrder(s) {
+  // models that just failed (dead providers, timeouts, empty replies) are skipped for a while — across sessions, since the cause is upstream
+  const bad = new Map();   // model -> until (ms)
+  const BAD_MS = 10 * 60e3;
+  const isBad = (id) => { const t = bad.get(id); if (t && t < Date.now()) bad.delete(id); return !!(t && t >= Date.now()); };
+  function fallbackOrder(s, tried = []) {
     const st = store.settings(), have = new Set(((store.models && store.models().list) || []).map((m) => m.id)), out = [];
-    for (const id of [s.model, ...(st.favorites || []), ...PREFERRED, ...have]) if (id && (id === s.model || have.has(id)) && !out.includes(id)) out.push(id);
+    for (const id of [s.model, ...(st.favorites || []), ...PREFERRED, ...have]) if (id && (id === s.model || have.has(id)) && !out.includes(id) && !tried.includes(id) && !isBad(id)) out.push(id);
     return out.slice(0, 6);
   }
 
@@ -198,19 +202,35 @@ function createAgent({ store, emit, getKey, ui }) {
         if (alts.length) { const order = [s.model, ...alts.slice(0, 2)]; for (let i = 0; i < (s._alt || 0) % order.length; i++) order.push(order.shift()); body.models = order; body.model = order[0]; }
       }
     }
-    else if (s._alt) {   // own server (OmniRoute…): a model whose providers all failed → try the next available one
-      const order = fallbackOrder(s); if (order.length > 1) body.model = order[s._alt % order.length];
-    }
+    else if (s._cur) body.model = s._cur;   // own server (OmniRoute…): the model the run fell back to
     if (info.local) body.max_tokens = Math.min(body.max_tokens, Math.max(1024, Math.floor((info.context_length || 32768) / 4)));   // leave the prompt room inside a small context window
-    emit({ t: "activity", sid: s.id, text: "ينتظر النموذج…" });
+    emit({ t: "activity", sid: s.id, text: `ينتظر ${body.model}…` });
+    // watchdog: a provider that never answers, or stalls mid-stream, is cut off so the run can move to another model.
+    // The per-attempt controller also lets the user switch models mid-request (switchModel → "switch").
+    const att = new AbortController(); let why = null, dog = null;
+    const cut = (reason) => { if (!why) { why = reason; att.abort(); } };
+    const onOuter = () => cut("user"); if (signal.aborted) cut("user"); else signal.addEventListener("abort", onOuter, { once: true });
+    const firstMs = (st.firstByteTimeout || 90) * 1000, idleMs = (st.idleTimeout || 60) * 1000;
+    const arm = (ms) => { clearTimeout(dog); dog = setTimeout(() => cut("timeout"), ms); };
+    const slot = running.get(s.id); if (slot) slot.cut = cut;
+    const fail = (e) => {
+      if (why === "user" || signal.aborted) return abortErr();
+      if (why === "switch") return Object.assign(new Error("switched"), { switched: true });
+      if (why === "timeout") return Object.assign(new Error(`انتهت مهلة ${body.model} — لا ردّ منذ ${Math.round((started ? idleMs : firstMs) / 1000)} ثانية`), { status: 504, timeout: true });
+      return e;
+    };
+    let started = false;
+    arm(firstMs);
     let r;
-    try { r = await request(body, signal); }
-    catch (e) {   // a model that rejects one of the optional knobs still gets its turn
-      if (![400, 404, 422].includes(e.status) || signal.aborted) throw e;
-      delete body.reasoning; delete body.provider; delete body.models;
-      r = await request(body, signal);
-    }
-    const item = { id: uid(), kind: "assistant", text: "", reasoning: "", model: s.model, at: Date.now(), streaming: true };
+    try {
+      try { r = await request(body, att.signal); }
+      catch (e) {   // a model that rejects one of the optional knobs still gets its turn
+        if (![400, 404, 422].includes(e.status) || att.signal.aborted) throw e;
+        delete body.reasoning; delete body.provider; delete body.models;
+        r = await request(body, att.signal);
+      }
+    } catch (e) { clearTimeout(dog); signal.removeEventListener("abort", onOuter); if (slot) slot.cut = null; throw fail(e); }
+    const item = { id: uid(), kind: "assistant", text: "", reasoning: "", model: body.model, at: Date.now(), streaming: true };
     let shown = false, usage = null, finish = null, buf = "", lastAct = 0, raw = "";
     const calls = [], rdetails = [], dec = new TextDecoder();
     const show = () => { if (!shown) { shown = true; upsert(s, item); } };
@@ -236,10 +256,12 @@ function createAgent({ store, emit, getKey, ui }) {
         const now = Date.now();
         if (now - lastAct > 300) { lastAct = now; const p = c.args.match(/"(?:path|command|query|url|pattern|name)"\s*:\s*"((?:[^"\\]|\\.){1,80})/); emit({ t: "activity", sid: s.id, tool: c.name, hint: p ? p[1] : "", chars: c.args.length }); }
       }
-      if (j.model && j.model !== s.model) item.model = j.model;
+      if (j.model && j.model !== body.model) item.model = j.model;
     };
     try {
       for await (const chunk of r.body) {
+        if (why) break;
+        started = true; arm(idleMs);
         buf += dec.decode(chunk, { stream: true });
         let nl;
         while ((nl = buf.indexOf("\n")) >= 0) {
@@ -250,14 +272,17 @@ function createAgent({ store, emit, getKey, ui }) {
           handle(j);
         }
       }
+      if (why) throw new Error(why);
     } catch (e) {
       item.streaming = false; if (shown) upsert(s, item);
       if (item.text.trim()) s.messages.push({ role: "assistant", content: item.text });   // keep what was said before the cut
-      throw signal.aborted ? abortErr() : e;
-    }
+      throw fail(e);
+    } finally { clearTimeout(dog); signal.removeEventListener("abort", onOuter); if (slot) slot.cut = null; }
     item.streaming = false;
     const toolCalls = calls.filter((c) => c && c.name).map((c) => ({ id: c.id || "call_" + uid(), name: c.name, args: c.args }));
-    const counted = account(s, usage, s.model);
+    // a 200 with nothing in it (router lost the upstream, or a broken provider) is a failure, not "the model is done"
+    if (!item.text.trim() && !toolCalls.length && finish !== "length") { if (shown) { item.streaming = false; upsert(s, item); } throw Object.assign(new Error(`ردّ فارغ من ${body.model}`), { status: 502, empty: true }); }
+    const counted = account(s, usage, body.model);
     if (counted) { s.ctx = { used: counted.prompt + counted.completion, max: info.context_length || s.ctx.max || 200000 }; item.tokens = counted.completion; }
     if (shown || !toolCalls.length) upsert(s, item);
     pushUsage(s);
@@ -445,10 +470,15 @@ function createAgent({ store, emit, getKey, ui }) {
 
   async function run(s) {
     const ac = new AbortController();
-    running.set(s.id, { ac });
+    running.set(s.id, { ac, cut: null });
     emit({ t: "status", sid: s.id, running: true });
     const st = store.settings();
-    s._alt = 0;
+    s._alt = 0; s._cur = null;
+    const ownSrv = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
+    if (ownSrv && isBad(s.model)) {   // it failed a moment ago: start on a working one instead of waiting for it to fail again
+      const next = fallbackOrder(s)[0];
+      if (next && next !== s.model) { s._cur = next; notice(s, `${s.model} تعطّل قبل قليل — يستخدم ${next} مؤقتاً (يعود إليه تلقائياً بعد دقائق، أو اختره يدوياً).`, "warn"); }
+    }
     try {
       for (let step = 0; step < (st.maxSteps || 80); step++) {
         await maybeCompact(s, ac.signal);
@@ -462,18 +492,31 @@ function createAgent({ store, emit, getKey, ui }) {
         }
         let res;
         const own = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
-        for (let attempt = 0; ; attempt++) {
+        const tried = [];
+        for (let attempt = 0, switches = 0; ; attempt++) {
           try { res = await complete(s, ac.signal); if (!own) s._alt = 0; break; }
           catch (e) {   // upstream failed: try again on the next model (OpenRouter free models, or the next model the own server offers)
             if (ac.signal.aborted || e.name === "AbortError") throw e;
-            const st2 = e.status, order = own ? fallbackOrder(s) : [];
-            const switchable = own ? (!st2 || st2 >= 500 || [401, 402, 403, 404, 408, 429].includes(st2) || /\[\d{3}\]/.test(e.message)) : (!st2 || st2 >= 500 || st2 === 408 || st2 === 429);
-            const limit = own ? Math.min(3, Math.max(0, order.length - 1)) : 2;
-            if (!switchable || attempt >= limit) { const sum = summarizeProviderError(e.message); if (sum) throw Object.assign(new Error(sum.text), { detail: sum.detail, providerError: true }); throw e; }
-            const from = own ? order[(s._alt || 0) % order.length] : s.model;
-            s._alt = (s._alt || 0) + 1; if (!own) s._chunkHint = true;
+            if (e.switched) {   // the user picked another model mid-request: retry right away on it
+              s._cur = null; tried.length = 0; attempt = -1;
+              if (++switches > 20) throw new Error("تم إلغاء الطلب بعد تبديلات كثيرة.");
+              notice(s, `تم التبديل إلى ${s.model} — يعيد المحاولة الآن…`, "info"); continue;
+            }
+            const st2 = e.status;
+            // the server itself is unreachable: every model would fail the same way, so don't blame (and blacklist) them
+            const switchable = e.conn ? false : own ? (!st2 || st2 >= 500 || [401, 402, 403, 404, 408, 429].includes(st2) || /\[\d{3}\]/.test(e.message)) : (!st2 || st2 >= 500 || st2 === 408 || st2 === 429);
+            const from = own ? s._cur || s.model : s.model;
+            if (own && switchable) { tried.push(from); bad.set(from, Date.now() + BAD_MS); }
+            const next = own ? fallbackOrder(s, tried)[0] : null;
+            const limit = own ? 4 : 2;
+            if (!switchable || attempt >= limit - 1 || (own && !next)) {
+              const sum = summarizeProviderError(e.message); if (sum) throw Object.assign(new Error(sum.text), { detail: sum.detail, providerError: true });
+              if (own && switchable) throw Object.assign(new Error(`${e.message} — لم يعد هناك نموذج بديل يعمل. جرّب نموذجاً آخر أو تحقق من OmniRoute.`), { detail: tried.length > 1 ? "جُرّب: " + tried.join("، ") : undefined, providerError: true });
+              throw e;
+            }
+            if (own) s._cur = next; else { s._alt = (s._alt || 0) + 1; s._chunkHint = true; }
             const sum = summarizeProviderError(e.message);
-            notice(s, own ? `تعذّر ${from}${sum ? "" : ` (${String(e.message).slice(0, 120)})`} — أكمل بـ ${order[s._alt % order.length]}…` : "انقطع ردّ المزوّد — إعادة المحاولة بنموذج بديل وعلى دفعات أصغر…", "warn", sum ? { detail: sum.detail } : undefined);
+            notice(s, own ? `تعذّر ${from}${sum ? "" : ` (${String(e.message).slice(0, 120)})`} — أكمل بـ ${next}…` : "انقطع ردّ المزوّد — إعادة المحاولة بنموذج بديل وعلى دفعات أصغر…", "warn", sum ? { detail: sum.detail } : undefined);
           }
         }
         s.messages.push(res.message);
@@ -564,11 +607,19 @@ function createAgent({ store, emit, getKey, ui }) {
     const dirs = [store.dir && path.join(store.dir, "skills"), s && path.join(s.cwd, ".antillusion", "skills")];
     const sl = skills.parseSlash(raw, dirs), skill = sl ? sl.skill : skills.match(raw, dirs, 6), idea = sl ? sl.rest || raw : raw;
     const sys = `You turn a rough idea into a precise, buildable brief for an AI coding agent. Reply in the SAME language as the idea (Arabic → Arabic). Output ONLY the brief, no preamble, at most ~230 words, as a short list with bold labels written ONLY in the idea's language — Arabic: الهدف · المستخدمون · الميزات الأساسية (3–7, must-have first) · التصميم والأسلوب · التقنية المقترحة (with a reason) · حالات خاصة · معايير القبول (checkable) · خارج النطاق; English: Goal · Users · Core features · Design & style · Suggested tech · Edge cases · Acceptance criteria · Out of scope. Keep every number, duration, name and constraint from the idea EXACTLY as written (never change 15 seconds into 5). Keep every constraint the user stated, make sensible defaults for the rest and mark them "(افتراضي)". Never invent brand names or facts. No code.${skill && skill.brief ? ` This request fits the "${skill.title}" skill — also cover: ${skill.brief}.` : ""}`;
-    const r = await request({ model, max_tokens: 1200, usage: { include: true }, messages: [{ role: "system", content: sys }, { role: "user", content: idea }] });
+    const r = await request({ model, max_tokens: 1200, usage: { include: true }, messages: [{ role: "system", content: sys }, { role: "user", content: idea }] }, AbortSignal.timeout(90000));
     const j = await r.json(), out = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     if (s) { account(s, j.usage, model); pushUsage(s); }
     if (!out) throw new Error((j.error && j.error.message) || "لم يصل ردّ من النموذج");
     return (sl ? `/${skill.command} ` : "") + out.trim();
+  }
+
+  /** The user picked another model: it is trusted again, and a request stuck on the old one is cut so the run retries on the new one. */
+  function switchModel(sid, model) {
+    bad.delete(model);
+    const s = store.getSession(sid); if (s) s._cur = null;
+    const r = running.get(sid); if (r && r.cut) { r.cut("switch"); return true; }
+    return false;
   }
 
   function stop(sid) {
@@ -598,7 +649,7 @@ function createAgent({ store, emit, getKey, ui }) {
     return true;
   }
 
-  return { send, stop, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
+  return { send, stop, switchModel, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
 }
 
 module.exports = { createAgent, uid };

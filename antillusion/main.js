@@ -65,12 +65,17 @@ const baseUrl = () => (store.settings().baseUrl || "http://localhost:20128/v1").
 
 // OmniRoute (the local router on :20128) is not a service: when the base URL points at it and nothing answers,
 // start the globally installed CLI ourselves (loopback only, no browser, no tray) and wait until it serves.
-let routerStarting = null;
+let routerStarting = null, routerSeen = 0;
 async function ensureLocalRouter() {
   const u = baseUrl();
   if (!/^https?:\/\/(localhost|127\.0\.0\.1):20128\b/.test(u)) return true;
-  const up = async () => { try { await fetch(u + "/models", { signal: AbortSignal.timeout(1500) }); return true; } catch { return false; } };
-  if (await up()) return true;
+  // a busy OmniRoute can take seconds to answer HTTP but still accepts the TCP connection: only a refused port means "not running".
+  // (A slow HTTP probe used to look like "down" and start a second copy fighting over :20128.)
+  const port = new URL(u).port || "20128";
+  const open = () => new Promise((res) => { const c = require("net").connect({ host: "127.0.0.1", port: +port }); const done = (v) => { c.destroy(); res(v); }; c.setTimeout(2000, () => done(true)); c.once("connect", () => done(true)); c.once("error", () => done(false)); });
+  const up = async () => { try { await fetch(u + "/models", { signal: AbortSignal.timeout(4000) }); return true; } catch { return false; } };
+  if (Date.now() - routerSeen < 20000) return true;
+  if (await open()) { routerSeen = Date.now(); return true; }
   if (!routerStarting) routerStarting = (async () => {
     const cli = path.join(process.env.APPDATA || "", "npm", "node_modules", "omniroute", "bin", "omniroute.mjs");
     // Setup finishes Node.js + OmniRoute in the background (OmniRoute is a few hundred MB); wait for it up to 15 minutes
@@ -81,7 +86,7 @@ async function ensureLocalRouter() {
     const env = { ...process.env, OMNIROUTE_SERVER_HOST: "127.0.0.1" };
     delete env.ELECTRON_RUN_AS_NODE;
     try { const p = spawn(process.env.ANTILLUSION_NODE || (fs.existsSync(path.join(RUNTIME, "node", "node.exe")) ? path.join(RUNTIME, "node", "node.exe") : "node"), [cli, "serve", "--port", "20128", "--no-open", "--no-tray"], { detached: true, stdio: "ignore", windowsHide: true, env }); p.on("error", () => {}); p.unref(); } catch { return false; }
-    for (let i = 0; i < 45; i++) { await new Promise((r) => setTimeout(r, 2000)); if (await up()) return true; }
+    for (let i = 0; i < 45; i++) { await new Promise((r) => setTimeout(r, 2000)); if (await open() && await up()) { routerSeen = Date.now(); return true; } }
     return false;
   })().finally(() => { routerStarting = null; });
   return routerStarting;
@@ -282,7 +287,9 @@ const H = {
   "session:get": (id) => { const s = store.getSession(id); if (s && !store.modelInfo(s.model) && store.models().list.length && !agent.isRunning(id)) { s.model = store.settings().model; store.saveSession(s); } return s ? { meta: store.meta(s), log: s.log, running: agent.isRunning(id) } : null; },
   "session:update": (id, patch) => {
     const s = store.getSession(id); if (!s) return null;
+    const prev = s._cur || s.model;
     for (const k of ["model", "mode", "perm", "effort", "title", "rating"]) if (patch[k] !== undefined) s[k] = patch[k];
+    if (patch.model && patch.model !== prev) agent.switchModel(id, patch.model);   // a request stuck on the old model is cut and retried on the new one
     if (patch.title) s.titled = true;
     if (patch.model) { s.ctx.max = (store.modelInfo(patch.model) || {}).context_length || s.ctx.max; store.setSettings({ model: patch.model }); }
     for (const k of ["mode", "perm", "effort"]) if (patch[k] !== undefined) store.setSettings({ [k]: patch[k] });
@@ -340,7 +347,7 @@ const H = {
     const i = updater ? await updater.info() : {};
     return { version: bi.version || i.version || "", mode: i.mode, branch: i.branch || "", commit: String(i.head || bi.commit || "").slice(0, 7), run: bi.run || "", channel: bi.channel || (i.mode === "git" ? "git" : "stable"), builtAt: bi.builtAt || "" };
   },
-  "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; await ensureLocalRouter(); try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
+  "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
   "library:read": (cardId, id) => { const s = id && store.getSession(id); return library.read(cardId, [store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
   "library:import": async () => {
