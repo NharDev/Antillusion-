@@ -170,6 +170,29 @@ function createAgent({ store, emit, getKey, ui }) {
   // models that just failed (dead providers, timeouts, empty replies) are skipped for a while — across sessions, since the cause is upstream
   const bad = new Map();   // model -> until (ms)
   const BAD_MS = 10 * 60e3;
+  // how long a failure keeps a model out of rotation depends on why it failed: a rate limit clears in a minute, an empty wallet does not
+  function classify(e) {
+    const m = String((e && e.message) || ""), st = e && e.status;
+    if (e && e.timeout) return { label: "انتهت مهلة الاستجابة", kind: "timeout", ms: 3 * 60e3 };
+    if (e && e.empty) return { label: "ردّ فارغ", kind: "empty", ms: 3 * 60e3 };
+    const codes = [...m.matchAll(/\[(\d{3})\]/g)].map((x) => +x[1]);
+    const cool = st === 429 || /cooling down|rate.?limit|too many requests/i.test(m);
+    if (codes.length) {
+      const hard = codes.filter((c) => [401, 402, 403].includes(c)).length;
+      if (hard === codes.length) return { label: codes.includes(402) ? "رصيد غير كافٍ" : "مفتاح أو صلاحية", kind: "billing", ms: BAD_MS };
+      if (codes.every((c) => c === 429)) return { label: "حدّ الطلبات", kind: "cooldown", ms: 60e3 };
+      return { label: "كل مزوّديه فشلوا", kind: "mixed", ms: 4 * 60e3 };
+    }
+    if (cool) return { label: "حدّ الطلبات / تبريد", kind: "cooldown", ms: 60e3 };
+    if (st === 402) return { label: "رصيد غير كافٍ", kind: "billing", ms: BAD_MS };
+    if (st === 401 || st === 403) return { label: "مفتاح أو صلاحية", kind: "billing", ms: BAD_MS };
+    if (st === 404) return { label: "نموذج غير موجود", kind: "missing", ms: BAD_MS };
+    if (/Stream ended|SSE event/i.test(m)) return { label: "انقطع البث", kind: "stream", ms: 2 * 60e3 };
+    return { label: st ? "خطأ " + st : "خطأ من المزوّد", kind: "server", ms: 2 * 60e3 };
+  }
+  // live health per model (success/failure, last reason, latency) — shown in the model picker and the health board
+  const health = new Map();
+  const noteHealth = (model, ok, info = {}) => { const h = health.get(model) || { ok: 0, fail: 0 }; if (ok) { h.ok++; h.ms = info.ms; h.lastOk = Date.now(); } else { h.fail++; h.last = info.label; h.kind = info.kind; h.lastFail = Date.now(); } health.set(model, h); emit({ t: "health", model, health: { ...h, until: bad.get(model) || 0 } }); };
   const isBad = (id) => { const t = bad.get(id); if (t && t < Date.now()) bad.delete(id); return !!(t && t >= Date.now()); };
   function fallbackOrder(s, tried = []) {
     const st = store.settings(), have = new Set(((store.models && store.models().list) || []).map((m) => m.id)), out = [];
@@ -492,9 +515,18 @@ function createAgent({ store, emit, getKey, ui }) {
         }
         let res;
         const own = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
-        const tried = [];
+        const tried = [], trail = [];
+        let route = null, waits = 0;
+        // one notice per step that grows as models are tried (instead of a wall of warnings), then settles into a one-line summary
+        const showRoute = (level, text, extra = {}) => { route = upsert(s, { id: route ? route.id : uid(), kind: "notice", route: trail.slice(), level, text, at: Date.now(), ...extra }); };
         for (let attempt = 0, switches = 0; ; attempt++) {
-          try { res = await complete(s, ac.signal); if (!own) s._alt = 0; break; }
+          const t0 = Date.now(), using = own ? s._cur || s.model : s.model;
+          try {
+            res = await complete(s, ac.signal); if (!own) s._alt = 0;
+            noteHealth(using, true, { ms: Date.now() - t0 });
+            if (route) showRoute("info", `أُكمل بـ ${using} بعد تعذّر ${trail.map((x) => x.model).join("، ")}`, { detail: route.detail, settled: true });
+            break;
+          }
           catch (e) {   // upstream failed: try again on the next model (OpenRouter free models, or the next model the own server offers)
             if (ac.signal.aborted || e.name === "AbortError") throw e;
             if (e.switched) {   // the user picked another model mid-request: retry right away on it
@@ -505,18 +537,33 @@ function createAgent({ store, emit, getKey, ui }) {
             const st2 = e.status;
             // the server itself is unreachable: every model would fail the same way, so don't blame (and blacklist) them
             const switchable = e.conn ? false : own ? (!st2 || st2 >= 500 || [401, 402, 403, 404, 408, 429].includes(st2) || /\[\d{3}\]/.test(e.message)) : (!st2 || st2 >= 500 || st2 === 408 || st2 === 429);
-            const from = own ? s._cur || s.model : s.model;
-            if (own && switchable) { tried.push(from); bad.set(from, Date.now() + BAD_MS); }
+            const from = own ? s._cur || s.model : s.model, why = classify(e);
+            if (switchable) { trail.push({ model: from, reason: why.label, kind: why.kind }); noteHealth(from, false, why); }
+            if (own && switchable) { tried.push(from); bad.set(from, Date.now() + why.ms); }
             const next = own ? fallbackOrder(s, tried)[0] : null;
-            const limit = own ? 4 : 2;
+            const limit = own ? 5 : 2;
             if (!switchable || attempt >= limit - 1 || (own && !next)) {
-              const sum = summarizeProviderError(e.message); if (sum) throw Object.assign(new Error(sum.text), { detail: sum.detail, providerError: true });
-              if (own && switchable) throw Object.assign(new Error(`${e.message} — لم يعد هناك نموذج بديل يعمل. جرّب نموذجاً آخر أو تحقق من OmniRoute.`), { detail: tried.length > 1 ? "جُرّب: " + tried.join("، ") : undefined, providerError: true });
+              // every model is only rate-limited / cooling down: wait it out once or twice instead of giving up
+              if (own && switchable && trail.length && trail.every((x) => x.kind === "cooldown") && waits < 2) {
+                const secs = store.settings().cooldownWait || Math.min(90, +((String(e.message).match(/retry.{0,12}?(\d+)\s*s/i) || [])[1] || 0) || 25 * (waits + 1));
+                waits++;
+                for (const x of tried) bad.delete(x);
+                tried.length = 0; s._cur = null; attempt = -1;
+                showRoute("warn", `كل النماذج في فترة تبريد عند المزوّد — أعيد المحاولة تلقائياً بعد ${secs} ثانية…`, { detail: String(e.message).slice(0, 2000) });
+                for (let i = secs; i > 0; i--) { emit({ t: "activity", sid: s.id, text: `فترة تبريد — إعادة المحاولة بعد ${i} ث` }); await sleep(1000, ac.signal); }
+                continue;
+              }
+              const sum = summarizeProviderError(e.message);
+              const tail = trail.length > 1 ? { detail: (sum ? sum.detail : String(e.message)) + "\n\nجُرّب: " + trail.map((x) => `${x.model} (${x.reason})`).join("، ") } : sum ? { detail: sum.detail } : {};
+              if (route) route.level = "warn";
+              if (sum) throw Object.assign(new Error(sum.text), { ...tail, providerError: true, route: trail.slice() });
+              if (own && switchable) throw Object.assign(new Error(`${why.label}: ${String(e.message).slice(0, 160)} — لم يعد هناك نموذج بديل يعمل. جرّب نموذجاً آخر أو تحقق من OmniRoute.`), { ...tail, providerError: true, route: trail.slice() });
               throw e;
             }
             if (own) s._cur = next; else { s._alt = (s._alt || 0) + 1; s._chunkHint = true; }
             const sum = summarizeProviderError(e.message);
-            notice(s, own ? `تعذّر ${from}${sum ? "" : ` (${String(e.message).slice(0, 120)})`} — أكمل بـ ${next}…` : "انقطع ردّ المزوّد — إعادة المحاولة بنموذج بديل وعلى دفعات أصغر…", "warn", sum ? { detail: sum.detail } : undefined);
+            if (own) showRoute("warn", `تعذّر ${from} (${why.label}) — أكمل بـ ${next}…`, { detail: sum ? sum.detail : String(e.message).slice(0, 2000) });
+            else notice(s, "انقطع ردّ المزوّد — إعادة المحاولة بنموذج بديل وعلى دفعات أصغر…", "warn");
           }
         }
         s.messages.push(res.message);
@@ -543,7 +590,7 @@ function createAgent({ store, emit, getKey, ui }) {
       }
     } catch (e) {
       if (e.name === "AbortError" || ac.signal.aborted) notice(s, "تم الإيقاف.");
-      else notice(s, e.message || String(e), "error", e.providerError ? { detail: e.detail, actions: ["router", "model"] } : undefined);
+      else notice(s, e.message || String(e), "error", e.providerError ? { detail: e.detail, actions: ["router", "model", "health"], route: e.route } : undefined);
     } finally {
       emit({ t: "activity", sid: s.id, text: "" });
       for (const [id, w] of waiting) if (w.sid === s.id) { waiting.delete(id); w.resolve({ decision: "deny" }); }
@@ -616,7 +663,7 @@ function createAgent({ store, emit, getKey, ui }) {
 
   /** The user picked another model: it is trusted again, and a request stuck on the old one is cut so the run retries on the new one. */
   function switchModel(sid, model) {
-    bad.delete(model);
+    bad.delete(model); const h = health.get(model); if (h) emit({ t: "health", model, health: { ...h, until: 0 } });
     const s = store.getSession(sid); if (s) s._cur = null;
     const r = running.get(sid); if (r && r.cut) { r.cut("switch"); return true; }
     return false;
@@ -637,6 +684,25 @@ function createAgent({ store, emit, getKey, ui }) {
     finally { running.delete(sid); emit({ t: "status", sid, running: false }); }
   }
 
+  /** Time machine: every file edit of the session in order, newest last (only edits that still have a checkpoint can be rewound). */
+  function timeline(sid) {
+    const s = store.getSession(sid); if (!s) return [];
+    return s.log.filter((it) => it.kind === "tool" && (s.checkpoints || {})[it.id]).map((it) => {
+      const cp = s.checkpoints[it.id];
+      return { id: it.id, path: cp.path, created: cp.before === null, at: it.at || 0, tool: it.name, diff: it.diff ? { add: it.diff.add || 0, del: it.diff.del || 0 } : null };
+    });
+  }
+  /** Rewinds the workspace to just before `itemId`: undoes that edit and every later one, newest first. */
+  async function rewind(sid, itemId) {
+    if (running.has(sid)) throw new Error("أوقف الوكيل أولاً.");
+    const list = timeline(sid), i = list.findIndex((x) => x.id === itemId); if (i < 0) throw new Error("نقطة غير موجودة.");
+    const undo = list.slice(i).reverse(); let n = 0;
+    for (const x of undo) { try { await revert(sid, x.id); n++; } catch {} }
+    const s = store.getSession(sid);
+    notice(s, `⏪ أُعيد المشروع إلى ما قبل تعديل ${path.basename(list[i].path)} — تراجعتُ عن ${n} تعديل.`, "ok");
+    store.saveSession(s); return n;
+  }
+
   async function revert(sid, itemId) {
     const s = store.getSession(sid), cp = s && s.checkpoints && s.checkpoints[itemId];
     if (!cp) throw new Error("لا توجد نسخة سابقة لهذا التعديل.");
@@ -649,7 +715,9 @@ function createAgent({ store, emit, getKey, ui }) {
     return true;
   }
 
-  return { send, stop, switchModel, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
+  const healthReport = () => { const out = {}; for (const [m, h] of health) out[m] = { ...h, until: isBad(m) ? bad.get(m) : 0 }; return out; };
+  const resetHealth = () => { bad.clear(); health.clear(); emit({ t: "health", reset: true }); };
+  return { send, stop, switchModel, healthReport, resetHealth, timeline, rewind, expandPrompt, compactNow, replyPermission, revert, isRunning: (sid) => running.has(sid), anyRunning: () => running.size > 0, systemPrompt };
 }
 
 module.exports = { createAgent, uid };

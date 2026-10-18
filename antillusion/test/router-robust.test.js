@@ -77,6 +77,18 @@ function setup(port) {
   assert.ok(t.notices.some((n) => /تم التبديل إلى/.test(n.text)));
   srv.close();
 
+  // 4) every model is cooling down (429): wait it out and retry instead of failing
+  asked.length = 0; let cooling = 5;
+  srv = http.createServer((req, res) => { let b = ""; req.on("data", (d) => (b += d)).on("end", () => { const j = JSON.parse(b); asked.push(j.model);
+    if (cooling-- > 0) { res.writeHead(429, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: { message: "All credentials for model auto are cooling down" } })); }
+    res.writeHead(200, { "Content-Type": "text/event-stream" }); res.write("data: " + JSON.stringify({ choices: [{ delta: { content: "back after cooldown" } }] }) + "\n\n"); res.end("data: [DONE]\n\n"); }); }).listen(5203);
+  t = setup(5203); t.store.setSettings({ cooldownWait: 1 }); t.store.setModels(models.slice(0, 2));
+  await t.turn("hi");
+  assert.match(t.last(), /back after cooldown/, "recovers after the cooldown");
+  assert.ok(t.notices.some((n) => /فترة تبريد/.test(n.text)), "explains the wait: " + JSON.stringify(t.notices.map((n) => n.text)) + JSON.stringify(asked));
+  assert.ok(!t.notices.some((n) => n.level === "error"), "no error after a successful wait");
+  srv.close();
+
   clearTimeout(kill);
   console.log("PASS router robustness (timeouts, empty replies, sticky fallback, live switch)");
   process.exit(0);

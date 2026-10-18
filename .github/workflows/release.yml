@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           node build/manifest.js ../antillusion-build/Antillusion-win32-x64/resources/app . ../antillusion-setup/files.json
-          node -e "const fs=require('fs');const bi=JSON.parse(fs.readFileSync('build-info.json','utf8'));const fm=JSON.parse(fs.readFileSync('../antillusion-setup/files.json','utf8'));const size=fs.statSync('../antillusion-setup/Antillusion-Setup.exe').size;fs.writeFileSync('../antillusion-setup/latest.json',JSON.stringify({version:bi.version,commit:bi.commit,channel:bi.channel,builtAt:bi.builtAt,setup:'Antillusion-Setup.exe',size,files:'files.json',electron:fm.electron}));console.log(fs.readFileSync('../antillusion-setup/latest.json','utf8'))"
+          node -e "const fs=require('fs');const bi=JSON.parse(fs.readFileSync('build-info.json','utf8'));const fm=JSON.parse(fs.readFileSync('../antillusion-setup/files.json','utf8'));const size=fs.statSync('../antillusion-setup/Antillusion-Setup.exe').size;const wn=JSON.parse(fs.readFileSync('whats-new.json','utf8'));fs.writeFileSync('../antillusion-setup/latest.json',JSON.stringify({version:bi.version,commit:bi.commit,channel:bi.channel,builtAt:bi.builtAt,setup:'Antillusion-Setup.exe',size,files:'files.json',electron:fm.electron,release:wn[0]}));console.log(fs.readFileSync('../antillusion-setup/latest.json','utf8'))"
       - name: Installer sizes
         shell: pwsh
         run: Get-ChildItem ../antillusion-setup -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,2)}}

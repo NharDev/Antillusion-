@@ -47,7 +47,7 @@ function run(port, broken, expectOk) {
   r = await run(5199, ["auto/best-coding", "auto/best-fast", "auto/best-reasoning"]);
   const err = r.notices.find((n) => n.level === "error");
   assert.ok(err, "final error shown"); assert.match(err.text, /فشل كل المزوّدين/); assert.match(err.text, /رصيد غير كافٍ ×2/); assert.ok(err.detail.includes("Insufficient wallet"));
-  assert.deepStrictEqual(err.actions, ["router", "model"]); assert.ok(err.text.length < 260, "summary stays short");
+  assert.deepStrictEqual(err.actions, ["router", "model", "health"]); assert.ok(r.notices.some((n) => n.route && n.route.length), "attempts are kept as a route trail"); assert.ok(err.text.length < 260, "summary stays short");
   console.log("PASS router fallback (" + r.asked.length + " attempts when all fail)");
   process.exit(0);
 })();

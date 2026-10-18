@@ -347,6 +347,19 @@ const H = {
     const i = updater ? await updater.info() : {};
     return { version: bi.version || i.version || "", mode: i.mode, branch: i.branch || "", commit: String(i.head || bi.commit || "").slice(0, 7), run: bi.run || "", channel: bi.channel || (i.mode === "git" ? "git" : "stable"), builtAt: bi.builtAt || "" };
   },
+  // release notes of the running version (major.minor) — the renderer shows them once after an update, like a phone's "What's New"
+  "app:whatsnew": () => {
+    let all = []; try { all = JSON.parse(fs.readFileSync(path.join(__dirname, "whats-new.json"), "utf8")); } catch {}
+    const mm = String(require("./package.json").version || "").split(".").slice(0, 2).join(".");
+    return { current: all.find((r) => r.version === mm) || all[0] || null, all, seen: store.settings().seenRelease || "" };
+  },
+  "chat:timeline": (sid) => agent.timeline(sid),
+  "chat:rewind": (sid, itemId) => agent.rewind(sid, itemId),
+  "quick:ask": (text, mode) => quickAsk(text, mode),
+  "quick:hide": () => { if (quick && !quick.isDestroyed()) quick.hide(); return true; },
+  "quick:info": () => ({ key: quickKey, cwd: store.settings().lastCwd || app.getPath("home"), material: materialOn() }),
+  "router:health": () => ({ models: agent.healthReport() }),
+  "router:reset": () => { agent.resetHealth(); return true; },
   "omni:quota": async () => { if (!/20128/.test(baseUrl())) return { error: "الخدمة الحالية ليست OmniRoute" }; try { return await require("./core/omniquota").fetchQuota(baseUrl(), getKey()); } catch (e) { return { error: e.message }; } },
   "library:list": (id) => { const s = id && store.getSession(id); return library.list([store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
   "library:read": (cardId, id) => { const s = id && store.getSession(id); return library.read(cardId, [store.userLibraryDir(), s && path.join(s.cwd, ".antillusion", "library")]); },
@@ -359,7 +372,7 @@ const H = {
   "library:openFolder": () => shell.openPath(store.userLibraryDir()),
   "open:external": (url) => (/^https?:\/\//i.test(url) ? shell.openExternal(url) : null),
   "open:path": (p) => shell.openPath(p),
-  "theme:set": (theme) => { try { win.setTitleBarOverlay(overlay(theme)); win.setBackgroundColor(theme === "light" ? "#ffffff" : "#121316"); } catch {} return true; },
+  "theme:set": (theme) => { try { win.setTitleBarOverlay(overlay(theme)); if (!materialOn()) win.setBackgroundColor(theme === "light" ? "#ffffff" : "#121316"); } catch {} return true; },
   "setup:pickFolder": async () => { const r = await dialog.showOpenDialog(win, { title: "اختر مجلد مشاريعك", properties: ["openDirectory", "createDirectory"] }); if (r.canceled || !r.filePaths[0]) return null; store.setSettings({ lastCwd: r.filePaths[0] }); return r.filePaths[0]; },
   "setup:shortcut": () => { const appDir = app.getAppPath(); return shell.writeShortcutLink(path.join(app.getPath("desktop"), "Antillusion.lnk"), { target: process.execPath, args: app.isPackaged ? "" : `"${appDir}"`, cwd: appDir, description: "Antillusion — AI coding agent" }); },
 };
@@ -448,7 +461,35 @@ async function rollbackUpdate() {
 
 /* ---------- window ---------- */
 
-const overlay = (theme) => (theme === "light" ? { color: "#f4f4f6", symbolColor: "#4c4f57", height: 40 } : { color: "#0e0f11", symbolColor: "#a9adb6", height: 40 });
+// Windows 11 (22H2+) draws a real translucent Acrylic backdrop behind the window: the UI then lets it show through ("Liquid Glass")
+const winBuild = () => (process.platform === "win32" ? +(require("os").release().split(".")[2] || 0) : 0);
+const materialOn = () => store && store.settings().glass !== false && winBuild() >= 22621;
+const overlay = (theme) => (materialOn() ? { color: "#00000000", symbolColor: theme === "light" ? "#3a3d45" : "#c9ccd3", height: 40 } : theme === "light" ? { color: "#f4f4f6", symbolColor: "#4c4f57", height: 40 } : { color: "#0e0f11", symbolColor: "#a9adb6", height: 40 });
+
+/* ---------- Quick Ask: a small glass window on a global shortcut, from any app ---------- */
+let quick = null, quickKey = "";
+function toggleQuick() {
+  if (quick && !quick.isDestroyed() && quick.isVisible()) { quick.hide(); return; }
+  if (!quick || quick.isDestroyed()) {
+    const mat = materialOn();
+    quick = new BrowserWindow({ width: 720, height: 132, frame: false, resizable: false, alwaysOnTop: true, skipTaskbar: true, show: false, transparent: !mat, ...(mat ? { backgroundMaterial: "acrylic", backgroundColor: "#00000000" } : {}), roundedCorners: true,
+      webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, spellcheck: false } });
+    quick.removeMenu(); quick.loadFile(path.join(__dirname, "ui", "quick.html"), { query: mat ? { material: "1", theme: store.settings().theme || "dark" } : { theme: store.settings().theme || "dark" } });
+    quick.on("blur", () => { if (quick && !quick.isDestroyed()) quick.hide(); });
+  }
+  const { screen } = require("electron"), d = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+  quick.setPosition(Math.round(d.x + (d.width - 720) / 2), Math.round(d.y + d.height * 0.24));
+  quick.show(); quick.focus(); quick.webContents.send("evt", { t: "quick:show" });
+}
+async function quickAsk(text, mode) {
+  text = String(text || "").trim(); if (!text) return false;
+  if (quick && !quick.isDestroyed()) quick.hide();
+  const s = store.createSession({ cwd: store.settings().lastCwd, mode: mode || undefined });
+  await ensureLocalRouter();
+  agent.send(s.id, { text });
+  if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); send({ t: "open-session", meta: store.meta(s) }); }
+  return true;
+}
 
 /** One-time carry-over of sessions/settings saved under the app's previous name. */
 function migrateOldData() {
@@ -461,12 +502,13 @@ function migrateOldData() {
 
 function createWindow() {
   win = new BrowserWindow({
-    ...(SELFTEST ? { x: -5000, y: 60, skipTaskbar: true } : {}), width: 1560, height: 960, minWidth: 940, minHeight: 600, backgroundColor: store.settings().theme === "light" ? "#ffffff" : "#121316", show: false, title: "Antillusion", icon: path.join(__dirname, "ui", "icon.png"),
+    ...(SELFTEST ? { x: -5000, y: 60, skipTaskbar: true } : {}), width: 1560, height: 960, minWidth: 940, minHeight: 600, show: false,
+    ...(materialOn() ? { backgroundMaterial: "acrylic", backgroundColor: "#00000000" } : { backgroundColor: store.settings().theme === "light" ? "#ffffff" : "#121316" }), title: "Antillusion", icon: path.join(__dirname, "ui", "icon.png"),
     titleBarStyle: "hidden", titleBarOverlay: overlay(store.settings().theme),
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, nodeIntegration: false, webviewTag: true, spellcheck: false },
   });
   win.removeMenu();
-  win.loadFile(path.join(__dirname, "ui", "index.html"));
+  win.loadFile(path.join(__dirname, "ui", "index.html"), materialOn() ? { query: { material: "1" } } : undefined);
   win.once("ready-to-show", () => { win.show(); win.focus(); });
   setTimeout(() => { if (win && !win.isDestroyed() && !win.isVisible()) { win.show(); win.focus(); } }, 1200);
   win.webContents.on("will-navigate", (e, url) => { if (!url.startsWith("file://")) { e.preventDefault(); H["open:external"](url); } });
@@ -502,6 +544,10 @@ app.whenReady().then(() => {
   for (const [ch, fn] of Object.entries(H)) ipcMain.handle(ch, async (e, ...args) => { try { return await fn(...args); } catch (err) { return { __error: err.message || String(err) }; } });
   updater = createUpdater({ appDir: __dirname, git: (cwd, ...a) => git(cwd, ...a), npm: npmInstall });
   createWindow();
+  if (!SELFTEST) {   // Quick Ask shortcut: Alt+Space, or Ctrl+Alt+Space when another app (PowerToys Run…) already owns it
+    const { globalShortcut } = require("electron");
+    for (const k of [store.settings().quickKey, "Alt+Space", "Control+Alt+Space"].filter(Boolean)) { try { if (globalShortcut.register(k, toggleQuick)) { quickKey = k; break; } } catch {} }
+  }
   setInterval(refreshRuntimePath, 5000);   // Node/Git can finish installing while the app is already open
   if (!SELFTEST) { setInterval(tickTasks, 30000); setTimeout(() => checkUpdate({ auto: true }), 8000); setInterval(() => checkUpdate({ auto: true }), 3 * 3600e3); }
 });
@@ -509,5 +555,6 @@ app.whenReady().then(() => {
 app.on("second-instance", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } });
 app.on("window-all-closed", () => app.quit());
 // an update downloaded for an installed copy is applied when the app closes
+app.on("will-quit", () => { try { require("electron").globalShortcut.unregisterAll(); } catch {} });
 app.on("will-quit", () => { if (updateState.phase === "ready" && updateState.installerFile && store && store.settings().autoUpdate !== false) launchInstaller(); });
 app.on("before-quit", () => { try { tools.stopAllServers(); store && store.flush(); } catch {} });

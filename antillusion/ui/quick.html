@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'">
+<title>Quick Ask</title>
+<style>
+  :root { --text: #eef0f4; --muted: #9298a3; --hair: rgba(255,255,255,.12); --fill: rgba(28,30,36,.82); --accent: #2f8cff; --ui: "Segoe UI Variable Text", "Segoe UI", -apple-system, system-ui, sans-serif; }
+  :root.light { --text: #16181d; --muted: #646a75; --hair: rgba(0,0,0,.1); --fill: rgba(250,250,252,.84); --accent: #007aff; }
+  :root.material { --fill: rgba(24,26,32,.38); } :root.material.light { --fill: rgba(255,255,255,.42); }
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; font: 15px/1.5 var(--ui); color: var(--text); -webkit-font-smoothing: antialiased; }
+  .q { position: absolute; inset: 8px; border-radius: 22px; background: var(--fill); border: 1px solid var(--hair); box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 20px 50px -12px rgba(0,0,0,.55); backdrop-filter: blur(30px) saturate(160%); display: flex; flex-direction: column; justify-content: center; padding: 0 22px; gap: 8px; animation: pop .22s cubic-bezier(.2,.9,.25,1.15); }
+  :root.material .q { inset: 0; border-radius: 0; box-shadow: none; border: 0; }
+  @keyframes pop { from { transform: scale(.96); opacity: 0; } }
+  .row { display: flex; align-items: center; gap: 14px; }
+  .mark { width: 30px; height: 30px; flex: none; color: var(--accent); }
+  input { flex: 1; min-width: 0; font: 400 21px var(--ui); color: var(--text); background: none; border: 0; outline: 0; }
+  input::placeholder { color: var(--muted); }
+  .meta { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); padding-inline-start: 44px; }
+  .seg { display: inline-flex; padding: 2px; border-radius: 9px; background: rgba(127,127,127,.14); }
+  .seg button { font: inherit; font-size: 12px; color: var(--muted); background: none; border: 0; padding: 2px 10px; border-radius: 7px; cursor: pointer; }
+  .seg button.on { background: rgba(255,255,255,.14); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.2); } :root.light .seg button.on { background: #fff; }
+  .grow { flex: 1; } kbd { font: 11px ui-monospace, Consolas, monospace; padding: 1px 6px; border-radius: 5px; border: 1px solid var(--hair); }
+  .cwd { direction: ltr; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div class="q">
+  <div class="row">
+    <svg class="mark" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3a9 9 0 010 18z" fill="currentColor"/></svg>
+    <input id="q" autofocus placeholder="اسأل Antillusion أو اطلب منه أي شيء…" dir="auto">
+  </div>
+  <div class="meta"><div class="seg" id="mode"><button data-m="agent" class="on">كود</button><button data-m="plan">خطة</button><button data-m="ask">سؤال</button></div><span class="cwd" id="cwd"></span><span class="grow"></span><span><kbd>Enter</kbd> إرسال · <kbd>Esc</kbd> إغلاق</span></div>
+</div>
+<script>
+  const qs = new URLSearchParams(location.search), root = document.documentElement;
+  if (qs.has("material")) root.classList.add("material"); if (qs.get("theme") === "light") root.classList.add("light");
+  const input = document.getElementById("q"); let mode = "agent";
+  document.getElementById("mode").onclick = (e) => { const b = e.target.closest("button"); if (!b) return; mode = b.dataset.m; for (const x of b.parentNode.children) x.classList.toggle("on", x === b); input.focus(); };
+  const info = () => api.invoke("quick:info").then((i) => { if (i) document.getElementById("cwd").textContent = i.cwd; }).catch(() => {});
+  info(); api.on((e) => { if (e.t === "quick:show") { input.value = ""; input.focus(); info(); } });
+  input.addEventListener("keydown", async (e) => {
+    if (e.key === "Escape") api.invoke("quick:hide");
+    if (e.key === "Enter" && !e.shiftKey && input.value.trim()) { e.preventDefault(); const t = input.value; input.value = ""; await api.invoke("quick:ask", t, mode); }
+  });
+</script>
+</body>
+</html>

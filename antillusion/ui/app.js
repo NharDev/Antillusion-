@@ -23,7 +23,7 @@ function h(tag, props, ...kids) {
 }
 
 const ICONS = {
-  plus: "M12 5v14M5 12h14", pen: "M4 20l4.5-1L19 8.5 15.5 5 5 15.5zM13.5 7l3.5 3.5", person: "M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 20.5a7 7 0 0114 0", motion: "M3 17c3.5 0 5-10 9-10s4.5 6 9 6M3 7h3M3 11h2", x: "M6 6l12 12M18 6L6 18", up: "M12 19V5M5 12l7-7 7 7", folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z",
+  plus: "M12 5v14M5 12h14", drop: "M12 3.5s6 6.4 6 10.6a6 6 0 01-12 0c0-4.2 6-10.6 6-10.6z", rewind: "M11 7l-6 5 6 5zM19 7l-6 5 6 5z", pulse: "M3 12h4l2-6 4 12 2-6h6", route: "M6 19a2 2 0 100-4 2 2 0 000 4zM18 9a2 2 0 100-4 2 2 0 000 4zM6 15V9a3 3 0 013-3h6M18 9v6a3 3 0 01-3 3H9", pen: "M4 20l4.5-1L19 8.5 15.5 5 5 15.5zM13.5 7l3.5 3.5", person: "M12 11a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM5 20.5a7 7 0 0114 0", motion: "M3 17c3.5 0 5-10 9-10s4.5 6 9 6M3 7h3M3 11h2", x: "M6 6l12 12M18 6L6 18", up: "M12 19V5M5 12l7-7 7 7", folder: "M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z",
   clip: "M21 12.5l-8.5 8.5a5.5 5.5 0 01-7.8-7.8l9-9a3.7 3.7 0 015.2 5.2l-9 9a1.8 1.8 0 01-2.6-2.6l8.3-8.3", sliders: "M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4",
   film: "M4 4h16v16H4zM8 4v16M16 4v16M4 9h4M16 9h4M4 15h4M16 15h4", gamepad: "M6 11h4M8 9v4M15 12h.01M18 10h.01M17.3 5H6.7a4 4 0 00-3.9 3.1L1.5 14a3 3 0 005.3 2.4L8 15h8l1.2 1.4A3 3 0 0022.5 14l-1.3-5.9A4 4 0 0017.3 5z", sparkle: "M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9zM19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z", download: "M12 3v12M7 11l5 5 5-5M4 20h16", refresh: "M20 11a8 8 0 00-14.9-3M4 4v4h4M4 13a8 8 0 0014.9 3M20 20v-4h-4", chart: "M4 20V10M10 20V4M16 20v-7M2 20h20", book: "M5 4h13a1 1 0 011 1v15H6.5A1.5 1.5 0 015 18.5zM5 18.5A1.5 1.5 0 016.5 17H19", branch: "M6 4v10M6 14a3 3 0 100 6 3 3 0 000-6zM18 4a3 3 0 100 6 3 3 0 000-6zM18 10c0 5-6 3-9 6",
   globe: "M12 3a9 9 0 100 18 9 9 0 000-18zM3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18", reload: "M20 11a8 8 0 10-2.3 5.7M20 4v7h-7", back: "M15 6l-6 6 6 6", fwd: "M9 6l6 6-6 6",
@@ -185,6 +185,7 @@ function renderHead() {
     h("span", { class: "crumb cur", dir: "auto", title: "انقر مرتين لإعادة التسمية", ondblclick: renameSession }, m.title),
     h("span", { class: "grow" }),
     quotaChip(),
+    h("button", { class: "mini tm-btn", title: "آلة الزمن — أعد المشروع إلى أي لحظة", onclick: () => timeMachine(), html: ico("rewind", 15) }),
     h("button", { class: "hchip quiet", title: "استخدام هذه الجلسة — اضغط للتفاصيل", onclick: usageModal }, h("span", { dir: "ltr" }, `${fmtCost(m.usage.cost)} · ${fmtTok(m.usage.prompt + m.usage.completion)}`)),
     h("button", { class: "mini", title: "خيارات المحادثة", onclick: (e) => menu(e.currentTarget, [
       { label: "إعادة تسمية", icon: "edit", onClick: renameSession },
@@ -316,9 +317,13 @@ function itemEl(v, it) {
   }
   if (it.kind === "tool") return toolEl(v, it);
   const acts = (it.actions || []).map((a) => a === "router" ? h("button", { class: "btn small", onclick: () => call("open:external", String(S.settings.baseUrl || "http://localhost:20128/v1").replace(/\/v1\/?$/, "") + "/dashboard") }, icoEl("ext", 12), " لوحة OmniRoute")
-    : a === "model" ? h("button", { class: "btn small primary", onclick: (e) => modelPicker(e.currentTarget) }, icoEl("brain", 12), " اختر نموذجاً آخر") : null).filter(Boolean);
-  return h("div", { class: "notice " + (it.level || "info") + (it.detail || acts.length ? " rich" : ""), data: { id: it.id }, dir: "auto" }, h("div", { class: "n-text" }, it.text),
-    acts.length ? h("div", { class: "n-acts" }, acts) : null,
+    : a === "model" ? h("button", { class: "btn small primary", onclick: (e) => modelPicker(e.currentTarget) }, icoEl("brain", 12), " اختر نموذجاً آخر")
+    : a === "health" ? h("button", { class: "btn small", onclick: () => healthModal() }, icoEl("pulse", 12), " صحة النماذج") : null).filter(Boolean);
+  const trail = it.route && it.route.length ? h("div", { class: "n-route", dir: "ltr" }, it.route.map((r) => h("span", { class: "rt-hop " + (r.kind || "") }, h("i"), h("b", null, r.model), h("small", { dir: "rtl" }, r.reason))),
+    it.settled ? h("span", { class: "rt-hop ok" }, h("i"), h("b", null, (String(it.text).match(/بـ (\S+)/) || [])[1] || "")) : null) : null;
+  if (it.route && it.settled) return h("details", { class: "notice route settled", data: { id: it.id }, dir: "auto" }, h("summary", null, icoEl("route", 13), h("span", null, it.text)), trail);
+  return h("div", { class: "notice " + (it.level || "info") + (it.detail || acts.length || trail ? " rich" : "") + (it.route ? " route" : ""), data: { id: it.id }, dir: "auto" }, h("div", { class: "n-text" }, it.route && it.level === "warn" ? h("span", { class: "spin" }) : null, it.text),
+    trail, acts.length ? h("div", { class: "n-acts" }, acts) : null,
     it.detail ? h("details", { class: "n-detail" }, h("summary", null, "التفاصيل التقنية"), h("pre", { dir: "ltr" }, String(it.detail).replace(/;\s+/g, ";\n"))) : null);
 }
 
@@ -501,6 +506,7 @@ function modelPicker(anchor) {
     list = [...list.filter((m) => fav.has(m.id)), ...list.filter((m) => !fav.has(m.id))].slice(0, 120);
     const rowFor = (m) => h("div", { class: "mrow" + (m.id === v.meta.model ? " on" : ""), onclick: () => { closePop(); patchSession({ model: m.id }); } },
       h("button", { class: "star" + (fav.has(m.id) ? " on" : ""), title: "مفضّلة", onclick: async (e) => { e.stopPropagation(); fav.has(m.id) ? fav.delete(m.id) : fav.add(m.id); S.settings = await call("settings:set", { favorites: [...fav] }) || S.settings; draw(); }, html: ico("star", 14) }),
+      healthDot(m.id),
       h("div", { class: "mmain" }, h("b", { dir: "ltr" }, m.name), h("small", { dir: "ltr" }, m.id.replace(/:free$/, ""))),
       h("div", { class: "mmeta", dir: "ltr" }, h("span", { title: "نافذة السياق" }, fmtTok(m.context_length)), m.architecture.input_modalities.includes("image") ? h("span", { title: "يقرأ الصور", html: ico("eye", 12) }) : null,
         (m.supported_parameters || []).includes("reasoning") ? h("span", { title: "يدعم التفكير", html: ico("brain", 12) }) : null, h("span", { class: +m.pricing.prompt === 0 ? "free" : "", title: +m.pricing.prompt === 0 ? "متاح للاستخدام بمفتاحك" : "سعر الإدخال / الإخراج لكل مليون رمز" }, price(m))));
@@ -688,7 +694,9 @@ async function settingsModal(openTab) {
     ] },
     { id: "look", title: "المظهر", icon: "sun", sub: "السِّمة وتخطيط الواجهة", rows: [
       R("السِّمة", "داكنة أو فاتحة", h("div", { class: "theme-cards" }, themeCard("dark", "داكنة", "linear-gradient(135deg,#191b1f,#0e0f11)"), themeCard("light", "فاتحة", "linear-gradient(135deg,#ffffff,#e9eaee)")), { tight: true }),
-      R("موضع لوحة الاستعراض", "الجهة التي تُفتح فيها بجانب المحادثة", segEl({ right: "يمين", left: "يسار" }, s.panelSide || "right", (k) => save({ panelSide: k })), { tight: true }),
+      R("موضع لوحة الاستعراض", "الجهة التي تُفتح فيها بجانب المحادثة", segEl({ right: "يمين", left: "يسار" }, s.panelSide || "right", (k) => save({ panelSide: k })), { tight: true }),      R("زجاج النافذة", "خامة Acrylic حقيقية خلف النافذة على Windows 11 — تُطبَّق بعد إعادة التشغيل", switchEl(s.glass !== false, (v) => save({ glass: v })), { tight: true }),
+      R("Quick Ask", "اختصار عام يفتح نافذة سؤال سريعة من أي برنامج (افتراضياً Alt+Space) — يُطبَّق بعد إعادة التشغيل", h("input", { class: "field", dir: "ltr", value: s.quickKey || "", placeholder: "Alt+Space", onchange: (e) => save({ quickKey: e.target.value.trim() }) })),
+      R("ما الجديد", "اعرض شاشة مزايا الإصدار الحالي", h("button", { class: "btn", onclick: async () => { const w = await call("app:whatsnew"); if (w && w.current) whatsNew(w.current, w.all, { preview: true }); } }, "عرض"), { tight: true }),
     ] },
     { id: "update", title: "التحديثات", icon: "download", sub: "النسخة الحالية والتحديث التلقائي", head: verCard, dot: () => ["available", "ready"].includes((U.st || {}).phase), rows: [
       R("تحديث تلقائي", "يفحص كل 3 ساعات وعند التشغيل، وينزّل التحديث عندما لا يكون الوكيل مشغولاً — ثم يطلب منك إعادة التشغيل", switchEl(s.autoUpdate !== false, (v) => save({ autoUpdate: v })), { tight: true }),
@@ -821,6 +829,69 @@ function showUpdateBanner(st) {
     h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل الآن"), h("button", { class: "ic-btn", title: "لاحقاً", onclick: () => bar.remove(), html: ico("x") }));
   document.body.append(bar);
 }
+/* ---------- What's New: a release presented like a phone OS update, once per minor version ---------- */
+const WN_TINT = { drop: "#4aa3ff", spark: "#f5b14c", sparkle: "#f5b14c", pulse: "#3ecf8e", route: "#38bdc9", clock: "#7aa2ff", gamepad: "#ff8a4c", film: "#ff7a59", bolt: "#f5b14c", download: "#4aa3ff", chart: "#3ecf8e" };
+function whatsNew(rel, all = [], opts = {}) {
+  if (!rel) return;
+  const close = async () => { wrap.classList.add("out"); setTimeout(() => wrap.remove(), 260); document.removeEventListener("keydown", onKey); if (!opts.preview) { const r = await call("settings:set", { seenRelease: rel.version }); if (r) S.settings = r; } };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  const card = (x, i) => h("div", { class: "wn-card", style: `--i:${i};--tint:${WN_TINT[x.icon] || "var(--accent)"}` }, h("div", { class: "wn-ico", html: ico(x.icon === "spark" ? "sparkle" : x.icon, 22) }), h("div", null, h("b", null, x.title), h("p", null, x.body)));
+  const older = all.filter((r) => r.version !== rel.version);
+  const sheet = h("div", { class: "wn-sheet" },
+    h("div", { class: "wn-glow" }),
+    h("div", { class: "wn-head" }, h("span", { class: "wn-k" }, opts.preview ? "التحديث القادم" : "ما الجديد في"), h("h1", { dir: "ltr" }, "Antillusion ", h("span", null, rel.version)), h("div", { class: "wn-name", dir: "ltr" }, rel.name || ""), h("p", { class: "wn-tag" }, rel.tagline || ""), rel.hero ? h("p", { class: "wn-hero" }, rel.hero) : null),
+    h("div", { class: "wn-grid" }, (rel.highlights || []).map(card)),
+    (rel.more || []).length ? h("div", { class: "wn-more" }, h("h4", null, "وأيضاً"), h("ul", null, rel.more.map((t) => h("li", null, t)))) : null,
+    older.length && !opts.preview ? h("details", { class: "wn-older" }, h("summary", null, "الإصدارات السابقة"), older.map((r) => h("div", { class: "wn-old" }, h("b", { dir: "ltr" }, `${r.version} · ${r.name || ""}`), h("span", null, r.tagline || ""), h("ul", null, (r.highlights || []).map((x) => h("li", null, h("b", null, x.title), " — ", x.body)))))) : null,
+    h("div", { class: "wn-foot" }, h("button", { class: "btn primary wn-go", onclick: close }, opts.preview ? "حسناً" : "متابعة")));
+  const wrap = h("div", { class: "wn-wrap", onmousedown: (e) => { if (e.target === wrap) close(); } }, sheet);
+  $("#layer").append(wrap); document.addEventListener("keydown", onKey);
+}
+
+/* ---------- Time machine: every edit of this session on one line; rewind the project to any point ---------- */
+async function timeMachine() {
+  const v = cur(); if (!v) return;
+  const list = await call("chat:timeline", v.meta.id); if (!list) return;
+  const body = h("div", { class: "tm" });
+  const m = modal("آلة الزمن", body, "wide");
+  if (!list.length) { body.append(h("div", { class: "side-empty" }, h("div", { class: "empty-art" }), "لا توجد تعديلات قابلة للاسترجاع في هذه المحادثة بعد.")); return; }
+  const fmt = (t) => t ? new Date(t).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" }) : "";
+  body.append(h("p", { class: "muted", style: "margin:0 0 14px" }, `${list.length} تعديلاً على ملفاتك بالترتيب. اختر لحظة لإرجاع المشروع إلى ما قبلها — يُلغى ذلك التعديل وكل ما بعده.`),
+    h("ol", { class: "tm-line" }, [...list].reverse().map((x, i) => h("li", { class: "tm-pt" + (i === 0 ? " now" : "") },
+      h("div", { class: "tm-dot" }), h("div", { class: "tm-main" }, h("b", { dir: "ltr" }, x.path.split(/[\\/]/).slice(-2).join("/")), h("small", null, `${x.created ? "أنشأه" : "عدّله"} الوكيل · ${fmt(x.at)}`, x.diff ? h("span", { class: "t-diff", dir: "ltr" }, h("i", { class: "p" }, "+" + x.diff.add), h("i", { class: "m" }, "−" + x.diff.del)) : null)),
+      h("button", { class: "btn small", disabled: v.running, onclick: async () => { if (!(await ask("إرجاع المشروع إلى ما قبل هذا التعديل؟", { input: false, ok: "أرجِع", danger: true, note: `سيُلغى ${list.length - list.indexOf(x)} تعديلاً (هذا وما بعده).` }))) return; const n = await call("chat:rewind", v.meta.id, x.id); if (n != null) { toast(`أُلغي ${n} تعديلاً`); m.close(); } } }, icoEl("rewind", 12), " إلى ما قبل هذا")))));
+}
+
+/* ---------- model health: what the router has been doing, per model ---------- */
+function healthOf(id) {
+  const x = (S.health || {})[id]; if (!x) return { st: "unknown", label: "لم يُستخدم بعد" };
+  if (x.until && x.until > Date.now()) return { st: x.kind === "cooldown" ? "cool" : "down", label: `${x.last || "متعطّل"} — يُتجاوز حتى ${new Date(x.until).toLocaleTimeString("ar", { hour: "2-digit", minute: "2-digit" })}` };
+  if (x.lastOk && (!x.lastFail || x.lastOk > x.lastFail)) return { st: "ok", label: `يعمل · ${x.ms ? (x.ms / 1000).toFixed(1) + " ث للخطوة" : ""}` };
+  return { st: "warn", label: x.last ? "آخر محاولة: " + x.last : "غير مستقر" };
+}
+const healthDot = (id) => { const x = healthOf(id); return h("span", { class: "hdot " + x.st, title: x.label }); };
+async function healthModal() {
+  const r = await call("router:health"); if (r) S.health = r.models || {};
+  const body = h("div", { class: "health" });
+  const m = modal("صحة النماذج", body, "wide");
+  const draw = () => {
+    const ids = [...new Set([...Object.keys(S.health || {}), ...(S.models || []).slice(0, 12).map((x) => x.id)])];
+    const order = { down: 0, cool: 1, warn: 2, ok: 3, unknown: 4 };
+    ids.sort((a, b) => order[healthOf(a).st] - order[healthOf(b).st]);
+    const counts = ids.reduce((c, id) => ((c[healthOf(id).st] = (c[healthOf(id).st] || 0) + 1), c), {});
+    body.replaceChildren(
+      h("p", { class: "muted", style: "margin:0 0 14px" }, "يتتبّع Antillusion كل نموذج يمرّ عبر الموجّه: النماذج المتعطّلة تُتجاوز تلقائياً لفترة تناسب سبب العطل (دقيقة لحدّ الطلبات، 10 دقائق لنفاد الرصيد)، ثم تُجرَّب من جديد."),
+      h("div", { class: "h-sum" }, [["ok", "تعمل"], ["cool", "في تبريد"], ["down", "متعطّلة"], ["unknown", "لم تُجرَّب"]].map(([k, l]) => h("div", { class: "h-stat " + k }, h("b", null, String(counts[k] || 0)), h("span", null, l)))),
+      h("div", { class: "h-grid" }, ids.map((id) => { const x = (S.health || {})[id] || {}, st = healthOf(id);
+        return h("div", { class: "h-card " + st.st }, h("div", { class: "h-top" }, h("span", { class: "hdot " + st.st }), h("b", { dir: "ltr" }, id)),
+          h("small", null, st.label), h("div", { class: "h-meta", dir: "ltr" }, h("span", null, "✓ " + (x.ok || 0)), h("span", null, "✕ " + (x.fail || 0)), x.ms ? h("span", null, (x.ms / 1000).toFixed(1) + "s") : null),
+          h("div", { class: "h-acts" }, h("button", { class: "btn small", onclick: () => { patchSession({ model: id }); m.close(); toast("تم التبديل إلى " + id); } }, "استخدمه"))); })),
+      h("div", { class: "btn-row", style: "margin-top:16px" }, h("button", { class: "btn", onclick: async () => { await call("router:reset"); S.health = {}; draw(); toast("أُعيد ضبط حالة النماذج"); } }, "إعادة المحاولة مع الكل"),
+        h("button", { class: "btn", onclick: () => call("open:external", String(S.settings.baseUrl || "http://localhost:20128/v1").replace(/\/v1\/?$/, "") + "/dashboard") }, icoEl("ext", 13), " لوحة OmniRoute")));
+  };
+  draw();
+}
+
 async function updateModal() {
   // Layout: version + status bar (one action) → progress → what's new (timeline) | settings & source. Quiet, neutral, no decoration.
   const body = h("div", { class: "up2" });
@@ -857,8 +928,14 @@ async function updateModal() {
     for (const [k, t] of notes) parts.push(h("div", { class: "up2-note " + k }, h("i"), h("span", { dir: "auto" }, t)));
     const list = (st.phase === "ready" ? st.applied : st.commits) || [];
     const s = S.settings || {};
+    // what the update brings, told like a product release: a new minor version gets its own presentation
+    const curMM = String(version).split(".").slice(0, 2).join("."), rel = (st.available || st.phase === "ready") && st.release ? st.release : null, bigRel = rel && rel.version !== curMM;
+    if (rel) parts.push(h("div", { class: "up2-rel" +  (bigRel ? " major" : "") },
+      h("div", { class: "up2-rel-h" }, h("div", null, h("span", { class: "up2-k" }, bigRel ? "إصدار رئيسي جديد" : "تحديث لـ " + rel.version), h("h3", { dir: "ltr" }, bigRel ? `Antillusion ${rel.version} · ${rel.name || ""}` : "تحسينات وإصلاحات"), h("p", null, bigRel ? rel.tagline : `${list.length || "عدة"} تحسينات على ${rel.name || "الإصدار الحالي"}`)),
+        bigRel ? h("button", { class: "btn ghost", onclick: () => whatsNew(rel, [], { preview: true }) }, "اكتشف الجديد") : null),
+      bigRel ? h("div", { class: "up2-feats" }, (rel.highlights || []).slice(0, 4).map((x) => h("div", { class: "up2-feat", style: `--tint:${WN_TINT[x.icon] || "var(--accent)"}` }, h("i", { html: ico(x.icon === "spark" ? "sparkle" : x.icon, 16) }), h("b", null, x.title)))) : null));
     const left = h("div", { class: "up2-col" },
-      h("div", { class: "up2-h" }, st.phase === "ready" ? "ما الذي تغيّر" : list.length ? `التغييرات (${st.behind || list.length})` : "سجل التغييرات"),
+      h("div", { class: "up2-h" }, st.phase === "ready" ? "ما الذي تغيّر" : list.length ? (rel ? "التفاصيل التقنية" : `التغييرات (${st.behind || list.length})`) : "سجل التغييرات"),
       list.length ? h("ol", { class: "up2-log" }, list.map((c) => h("li", null, h("p", { dir: "auto" }, c.subject), h("small", { dir: "ltr" }, h("code", null, c.sha), ` · ${c.author || ""} · ${c.when || ""}`))))
         : h("div", { class: "up2-empty" }, st.phase === "uptodate" ? "لا تغييرات جديدة منذ آخر تحديث." : "افحص التحديثات لعرض ما تغيّر."),
       st.notes ? h("pre", { class: "up2-relnotes", dir: "auto" }, st.notes) : null);
@@ -1003,6 +1080,8 @@ function setupWizard() {
 function onEvt(e) {
   if (e.t === "servers") { S.servers = e.list; renderServers(); const t = activeTab(); if (t && t.kind === "web" && !t.wv) drawBlank(t); return; }
   if (e.t === "update") return onUpdateState(e.state);
+  if (e.t === "open-session") { const m = e.meta; if (!S.sess.has(m.id)) { view(m, []); S.order.unshift(m); } openSession(m.id); renderSidebar(); return; }
+  if (e.t === "health") { if (e.reset) S.health = {}; else (S.health || (S.health = {}))[e.model] = e.health; return; }
   if (e.t === "router") return toast("OmniRoute يُثبَّت في الخلفية — قد يستغرق بضع دقائق، وسيعمل تلقائياً عند اكتماله");
   if (e.t === "preview") return openPreview(e);
   if (e.t === "previewRead") return handlePreviewRead(e);
@@ -1091,6 +1170,7 @@ function wire() {
   addEventListener("focus", () => { const v = cur(); if (v && v.unread) { v.unread = false; renderTabs(); } });
 }
 
+if (new URLSearchParams(location.search).has("material")) document.documentElement.classList.add("material");   // Windows 11 Acrylic behind the window
 (async function boot() {
   const b = await api.invoke("boot");
   Object.assign(S, { settings: b.settings, models: b.models, order: b.sessions, servers: b.servers, home: b.home });
@@ -1104,4 +1184,6 @@ function wire() {
   if (!tabs.length) await newSession(); else { S.tabs = tabs; const active = store.get("active"); await openSession(tabs.includes(active) ? active : tabs[0]); }
   if (!S.settings.setupDone || b.forceSetup) setupWizard();
   call("update:state").then((st) => st && onUpdateState(st)); drawVersionBadge(); loadSkills(); pollQuota(); setInterval(pollQuota, 60000);
+  call("router:health").then((r) => { if (r) S.health = r.models || {}; });
+  call("app:whatsnew").then((w) => { if (w && w.current && w.seen !== w.current.version && S.settings.setupDone) setTimeout(() => whatsNew(w.current, w.all), 900); });
 })();

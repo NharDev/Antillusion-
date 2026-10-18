@@ -50,7 +50,7 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
           const m = await r.json(), sha = String(m.commit || "").toLowerCase(), mine = String(info.commit || "").toLowerCase();
           const available = dev ? !!(sha && mine && sha !== mine) : newer(m.version, base.version);
           return { ...base, checkedAt, channel: dev ? "dev" : "stable", head: mine.slice(0, 7), latest: m.version ? "v" + m.version : sha.slice(0, 7), latestVersion: m.version || "", available,
-            url: `${base2}/${m.setup || "Antillusion-Setup.exe"}`, size: m.size || 0, filesUrl: m.files ? `${base2}/${m.files}` : "", electron: m.electron || "", page: `https://github.com/${repo}/releases/${dev ? "tag/dev-build" : "latest"}`, notes: String(m.notes || "").slice(0, 1500) };
+            url: `${base2}/${m.setup || "Antillusion-Setup.exe"}`, size: m.size || 0, filesUrl: m.files ? `${base2}/${m.files}` : "", electron: m.electron || "", page: `https://github.com/${repo}/releases/${dev ? "tag/dev-build" : "latest"}`, notes: String(m.notes || "").slice(0, 1500), release: m.release || null };
         }
       } catch (e) { if (e && e.name === "AbortError") throw e; }
       // 2) fallback: the GitHub API (older releases have no latest.json)
@@ -77,9 +77,11 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
       git(r, "log", "-n", "30", "--pretty=format:%h|%s|%an|%cr", `HEAD..${remote}`), git(r, "diff", "--name-only", "HEAD", remote),
       git(r, "status", "--porcelain", "--untracked-files=no"), git(r, "rev-parse", "--short", remote)]);
     const changed = files.ok ? files.out.split("\n").filter(Boolean) : [];
+    // the incoming version's release notes (whats-new.json on the remote branch): what the user gets, not just commit subjects
+    let release = null; try { const w = await git(r, "show", `${remote}:${prefix}whats-new.json`); if (w.ok) release = JSON.parse(w.out)[0] || null; } catch {}
     const n = parseInt(behind.out, 10) || 0;
     return { ...base, checkedAt, branch, remoteBranch: remote, latest: rhead.ok ? rhead.out : "", behind: n, ahead: parseInt(ahead.out, 10) || 0, available: n > 0,
-      dirty: dirty.ok && !!dirty.out, files: changed.length, needsInstall: changed.some((x) => x === prefix + "package.json" || x === prefix + "package-lock.json"),
+      release, dirty: dirty.ok && !!dirty.out, files: changed.length, needsInstall: changed.some((x) => x === prefix + "package.json" || x === prefix + "package-lock.json"),
       commits: log.ok ? log.out.split("\n").filter(Boolean).map((l) => { const [sha, subject, author, when] = l.split("|"); return { sha, subject, author, when }; }) : [] };
   }
 
