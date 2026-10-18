@@ -81,5 +81,6 @@ function read(id, extraDirs) {
 
 const list = (extraDirs) => { const { cards, catalog } = loadAll(extraDirs); return { cards: cards.map(({ id, title, tags, origin, text }) => ({ id, title, tags, origin, size: text.length })), catalog }; };
 const index = (extraDirs) => loadAll(extraDirs).cards.map((c) => `${c.id} (${c.title})`).join(" · ");
+const ids = (extraDirs) => loadAll(extraDirs).cards.map((c) => c.id).join(", ");   // compact form for the system prompt
 
-module.exports = { search, read, list, index, autoRefs, templates, TEMPLATES, BUILTIN };
+module.exports = { search, read, list, index, ids, autoRefs, templates, TEMPLATES, BUILTIN };

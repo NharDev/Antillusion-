@@ -63,7 +63,9 @@ const call = async (ch, ...a) => { try { return await api.invoke(ch, ...a); } ca
 /* ---------- popovers & modals ---------- */
 
 let popEl = null;
-function closePop() { if (popEl) { popEl.remove(); popEl = null; } }
+// every surface that animates in also animates out: mark it leaving, let the CSS exit play, then detach
+function fadeOut(el, ms = 200) { if (!el || el.classList.contains("leaving")) return; el.classList.add("leaving"); setTimeout(() => el.remove(), ms); }
+function closePop() { if (popEl) { fadeOut(popEl, 150); popEl = null; } }
 function popAt(anchor, el) {
   closePop(); popEl = el; el.classList.add("pop"); $("#layer").append(el);
   const r = anchor.getBoundingClientRect(), w = el.offsetWidth, ht = el.offsetHeight;
@@ -80,7 +82,7 @@ function menu(anchor, items) {
 document.addEventListener("mousedown", (e) => { if (popEl && !popEl.contains(e.target)) closePop(); }, true);
 
 function modal(title, body, cls = "") {
-  const close = () => { wrap.remove(); document.removeEventListener("keydown", onKey); };
+  const close = () => { fadeOut(wrap, 210); document.removeEventListener("keydown", onKey); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
   const wrap = h("div", { class: "modal-wrap", onmousedown: (e) => { if (e.target === wrap) close(); } },
     h("div", { class: "modal " + cls }, h("div", { class: "modal-h" }, h("b", null, title), h("button", { class: "ic-btn", onclick: close, html: ico("x") })), h("div", { class: "modal-b" }, body)));
@@ -331,7 +333,7 @@ const act = { el: null, t0: 0, timer: 0, sid: null, text: "" };
 function setActivity(v, e) {
   if (v !== cur()) return;
   const label = e.tool ? `${(TOOL[e.tool] || [e.tool])[0]}${e.hint ? " " + e.hint : ""}${e.chars > 400 ? ` · ${fmtTok(e.chars)} حرف` : ""}` : e.text;
-  if (!label) { clearInterval(act.timer); if (act.el) act.el.remove(); act.el = null; return; }
+  if (!label) { clearInterval(act.timer); if (act.el) fadeOut(act.el, 160); act.el = null; return; }
   if (!act.el || !act.el.isConnected) { act.t0 = Date.now(); act.el = h("div", { class: "activity" }, h("span", { class: "spin" }), h("span", { class: "a-text", dir: "auto" }), h("span", { class: "a-time", dir: "ltr" })); clearInterval(act.timer); act.timer = setInterval(() => { if (act.el) $(".a-time", act.el).textContent = ((Date.now() - act.t0) / 1000).toFixed(0) + "s"; }, 500); }
   $(".a-text", act.el).textContent = label; msgs().append(act.el); scrollDown();
 }
@@ -468,7 +470,7 @@ async function expandPromptUI() {
 async function skillsModal() {
   const body = h("div", { class: "skills" }, h("div", { class: "muted" }, "جارٍ التحميل…")); modal("القدرات (Skills)", body, "wide");
   await loadSkills(); const list = S.skills || [];
-  const use = (sk) => { document.querySelector(".modal-wrap")?.remove(); const inp = $("#input"); inp.value = "/" + sk.command + " " + (sk.example || ""); autosize(); inp.focus(); inp.setSelectionRange(("/" + sk.command + " ").length, inp.value.length); };
+  const use = (sk) => { fadeOut(document.querySelector(".modal-wrap")); const inp = $("#input"); inp.value = "/" + sk.command + " " + (sk.example || ""); autosize(); inp.focus(); inp.setSelectionRange(("/" + sk.command + " ").length, inp.value.length); };
   body.replaceChildren(
     h("p", { class: "muted" }, "القدرة = خبرة جاهزة يفعّلها الوكيل تلقائياً عند فهم طلبك، أو تستدعيها بكتابة ", h("code", { dir: "ltr" }, "/"), " في المحادثة. كل قدرة تأتي بمنهج عمل ومراجع وقوالب جاهزة."),
     h("div", { class: "skill-grid" }, list.map((sk) => h("div", { class: "skill-card" },
@@ -539,7 +541,14 @@ const P = S.panel;
 const ptab = (id) => P.tabs.find((t) => t.id === id);
 const activeTab = () => ptab(P.active);
 function setPanel(open) {
-  P.open = open; $("#panel").hidden = !open; $("#splitter").hidden = !open; $("#btnPanel").classList.toggle("on", open);
+  const pn = $("#panel");
+  if (!open && P.open && !pn.hidden) {   // slide out first, then hide
+    P.open = false; $("#btnPanel").classList.remove("on"); pn.classList.add("leaving"); clearTimeout(setPanel.t);
+    setPanel.t = setTimeout(() => { pn.classList.remove("leaving"); if (!P.open) { pn.hidden = true; $("#splitter").hidden = true; } }, 220);
+    return;
+  }
+  pn.classList.remove("leaving");
+  P.open = open; pn.hidden = !open; $("#splitter").hidden = !open; $("#btnPanel").classList.toggle("on", open);
   if (open) { $("#panel").style.width = store.get("panelW", Math.round(innerWidth * 0.46)) + "px"; if (!P.tabs.length) addPTab({}); }
 }
 function normUrl(u) { u = String(u || "").trim(); if (!u) return ""; if (/^(https?|file):/i.test(u)) return u; if (/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i.test(u) || /^[\w-]+:\d+/.test(u)) return "http://" + u; if (/^[\w-]+(\.[\w-]+)+(\/|$)/.test(u)) return "https://" + u; return "https://duckduckgo.com/?q=" + encodeURIComponent(u); }
@@ -829,7 +838,7 @@ function onUpdateState(st) {
 function showUpdateBanner(st) {
   document.querySelector(".upd-banner")?.remove();
   const bar = h("div", { class: "upd-banner" }, icoEl("refresh", 16), h("span", null, `تم تنزيل التحديث${st.latest ? " (" + st.latest + ")" : ""} — أعد تشغيل Antillusion لتطبيقه`),
-    h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل الآن"), h("button", { class: "ic-btn", title: "لاحقاً", onclick: () => bar.remove(), html: ico("x") }));
+    h("button", { class: "btn primary", onclick: () => call("update:restart") }, "إعادة التشغيل الآن"), h("button", { class: "ic-btn", title: "لاحقاً", onclick: () => fadeOut(bar), html: ico("x") }));
   document.body.append(bar);
 }
 /* ---------- What's New: a release presented like a phone OS update, once per minor version ---------- */
@@ -992,7 +1001,7 @@ async function libraryModal() {
   search.addEventListener("input", draw);
   modal("المكتبة الهندسية", h("div", { class: "lib" }, h("div", { class: "lib-side" }, search, listEl,
     h("div", { class: "btn-row" }, h("button", { class: "btn small", onclick: async () => { const n = await call("library:import"); if (n) { toast(`أُضيف ${n} مرجعاً — الوكيل سيستخدمها`); libClose(); libraryModal(); } } }, icoEl("plus", 13), " استيراد مرجع"), h("button", { class: "btn small", onclick: () => call("library:openFolder") }, "مجلد مكتبتي"))), viewer), "xwide");
-  const libClose = () => { const w = document.querySelector(".modal-wrap"); if (w) w.remove(); };
+  const libClose = () => fadeOut(document.querySelector(".modal-wrap"));
   draw(); showCard(lib.cards.find((c) => c.id === "scaffolds") || lib.cards[0]);
 }
 
@@ -1139,7 +1148,11 @@ function wire() {
   $("#btnNew").replaceChildren(icoEl("plus", 16), "New Conversation"); $("#btnHistory").replaceChildren(icoEl("history", 16), "Conversation History"); $("#btnTasks").replaceChildren(icoEl("clock", 16), "Scheduled Tasks"); $("#btnSettings").replaceChildren(icoEl("gear", 16), "Settings");
   $("#btnTheme").onclick = async () => { S.settings = await call("settings:set", { theme: S.settings.theme === "light" ? "dark" : "light" }) || S.settings; applyTheme(); };
   $("#btnHistory").onclick = historyModal; $("#btnTasks").onclick = tasksModal; $("#btnBack").onclick = () => navGo(-1); $("#btnFwd").onclick = () => navGo(1);
-  $("#btnSide").onclick = () => { const c = document.body.classList.toggle("noside"); store.set("noside", c); }; document.body.classList.toggle("noside", store.get("noside", false));
+  $("#btnSide").onclick = () => {
+    const b = document.body, hide = !b.classList.contains("noside");
+    if (hide) { b.classList.add("side-leaving"); setTimeout(() => { b.classList.remove("side-leaving"); b.classList.add("noside"); }, 200); } else b.classList.remove("noside");
+    store.set("noside", hide);
+  }; document.body.classList.toggle("noside", store.get("noside", false));
   $("#btnNewProject").onclick = async () => { const v = await newSession(); if (v) pickFolder(); };
   $("#btnNew").onclick = () => newSession(); $("#btnUsage").onclick = usageModal; $("#btnSkills").onclick = skillsModal; $("#btnExpand").onclick = expandPromptUI; $("#btnUpdate").onclick = updateModal; $("#btnLibrary").onclick = libraryModal; $("#btnSettings").onclick = settingsModal; $("#btnPanel").onclick = () => setPanel(!P.open);
   $("#btnSend").onclick = () => (cur().running ? call("chat:stop", S.active) : send());

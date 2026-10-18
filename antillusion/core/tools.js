@@ -87,8 +87,12 @@ const DEFS = [
 ];
 
 const BY_NAME = new Map(DEFS.map((d) => [d.name, d]));
-const toolDefs = (readOnly, expert) => DEFS.filter((d) => (!readOnly || d.kind === "read") && (!d.expert || expert))
-  .map((d) => ({ type: "function", function: { name: d.name, description: d.description, parameters: d.parameters } }));
+// compact: first sentence of each description and no per-parameter prose — for providers with small context/TPM limits
+const shortDesc = (t) => { const m = String(t).match(/^[\s\S]*?[.!?](\s|$)/); return (m ? m[0] : String(t)).trim().slice(0, 160); };
+const stripParams = (p) => { if (!p || typeof p !== "object") return p; const o = Array.isArray(p) ? [] : {}; for (const k in p) { if (k === "description" && typeof p[k] === "string") continue; o[k] = typeof p[k] === "object" ? stripParams(p[k]) : p[k]; } return o; };
+const COMPACT_DROP = new Set(["sources_search", "pkg_info", "library_search", "copy_file", "move_file", "server_logs", "stop_server"]);
+const toolDefs = (readOnly, expert, opt = {}) => DEFS.filter((d) => (!readOnly || d.kind === "read") && (!d.expert || expert) && (opt.selfDev || !/^project_/.test(d.name)) && !(opt.compact && COMPACT_DROP.has(d.name)))
+  .map((d) => ({ type: "function", function: { name: d.name, description: opt.compact ? shortDesc(d.description) : d.description, parameters: opt.compact ? stripParams(d.parameters) : d.parameters } }));
 const kindOf = (name) => (BY_NAME.get(name) || {}).kind;
 
 const DANGER = [

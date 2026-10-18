@@ -59,6 +59,19 @@ function run(port, working) {
   const err = r.notices.find((n) => n.level === "error");
   assert.ok(err && err.diag && err.diag.length >= 3, "per-provider diagnosis attached");
   assert.match(err.text, /فحصتُ بقية النماذج/);
+  // 3) a provider that rejects big requests (free-tier TPM / small context): retried at once in compact form
+  const sizes = [];
+  const big = http.createServer((req, res) => { let b = ""; req.on("data", (d) => (b += d)).on("end", () => { sizes.push(b.length);
+    if (b.length > 15000) { res.writeHead(413, { "Content-Type": "application/json" }); return res.end(JSON.stringify({ error: { message: "Request too large for model on tokens per minute (TPM): Limit 6000, Requested 9800" } })); }
+    res.writeHead(200, { "Content-Type": "text/event-stream" }); res.write("data: " + JSON.stringify({ choices: [{ delta: { content: "built the shooter" } }] }) + "\n\n"); res.end("data: [DONE]\n\n"); }); }).listen(5213);
+  const st2 = createStore(fs.mkdtempSync(path.join(os.tmpdir(), "anti-lt-"))); st2.setSettings({ baseUrl: "http://localhost:5213/v1", model: IDS[0] }); st2.setModels(models.slice(0, 1));
+  const out = await new Promise((done) => { const ag = createAgent({ store: st2, getKey: () => "", ui: {}, emit: (e) => { if (e.t === "status" && !e.running) done(st2.getSession(st2.listSessions()[0].id)); } });
+    const ss = st2.createSession({ cwd: fs.mkdtempSync(path.join(os.tmpdir(), "anti-ltw-")), model: IDS[0] }); ag.send(ss.id, { text: "اعمل لي لعبة شوتر ثلاثية الابعاد بشخصيات واقعية" }); });
+  big.close();
+  assert.match(String(out.messages[out.messages.length - 1].content), /built the shooter/, "compact retry succeeds");
+  assert.ok(sizes[0] > 15000 && sizes[sizes.length - 1] < 15000, "second request is much smaller: " + sizes.join(" → "));
+  console.log("compact retry: " + sizes.join(" → ") + " bytes");
+
   console.log("PASS scout (finds a working model; diagnoses " + err.diag.length + " providers when none work)");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });

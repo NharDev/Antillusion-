@@ -58,7 +58,7 @@ function createStore(dir) {
       sessions.set(s.id, s); this.saveSession(s); return s;
     },
     saveSession(s) {
-      const { allow, _seen, _fails, _blueprint, _alt, _cur, _chunkHint, _noExpert, ...rest } = s;
+      const { allow, _seen, _fails, _blueprint, _alt, _cur, _chunkHint, _noExpert, _lite, ...rest } = s;
       // checkpoints can be large; keep only the newest 40 on disk
       const keys = Object.keys(rest.checkpoints || {});
       if (keys.length > 40) { rest.checkpoints = Object.fromEntries(keys.slice(-40).map((k) => [k, s.checkpoints[k]])); s.checkpoints = rest.checkpoints; }

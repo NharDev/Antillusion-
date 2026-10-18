@@ -22,6 +22,31 @@ const MODE_TEXT = {
   ask: "MODE: ASK. You are read-only: answer questions about the code and about programming, reading whatever you need. Do not propose to make changes unless asked; modifying tools are disabled.",
 };
 
+const SIZE_ERR = /\[413\]|\b413\b|too large|context.{0,20}(length|window)|maximum context|prompt is too long|input is too long|reduce (the length|your message)|tokens per minute|\bTPM\b|exceeds.{0,40}(limit|context)/i;
+/** Short system prompt for small models / tight provider limits (~1.3k chars instead of ~12k). */
+function litePrompt(s, settings) {
+  return `You are Antillusion, a software-engineering agent working directly in the user's project folder with real tools (read/write/edit files, run commands, serve and preview pages). Reply in the user's language.
+Workspace: ${s.cwd} · OS: ${process.platform === "win32" ? "Windows" : process.platform} · Shell: ${tools.shellSpec(settings.shell).name || ""}
+${MODE_TEXT[s.mode] || MODE_TEXT.agent}
+Rules: act immediately with tool calls, no long preambles. Keep each write_file under ~120 lines; split big work into several files. Use use_template when a <starter_template> hint is present. Playbooks are available with library_read(id) when needed. Commands must be non-interactive. Verify once at the end (serve_static/open_preview then preview_read). Final answer: 2–5 lines.`;
+}
+/** Wire copy of a message with injected references collapsed to pointers (the library still has them). */
+function shrinkMsg(m) {
+  if (m.role !== "user") return m;
+  const sh = (t) => String(t).replace(/<library_reference id="([^"]+)">[\s\S]*?<\/library_reference>/g, (x, id) => `[reference "${id}" — read it with library_read if needed]`).replace(/(<skill [^>]*>)([\s\S]*?)(<\/skill>)/g, (x, a, b, c) => a + b.slice(0, 1400) + (b.length > 1400 ? "\n…" : "") + c);
+  if (typeof m.content === "string") return { ...m, content: sh(m.content) };
+  if (Array.isArray(m.content)) return { ...m, content: m.content.map((p) => (p.type === "text" ? { ...p, text: sh(p.text) } : p)) };
+  return m;
+}
+
+const SELF_DEV = `# Self-Development and Introspection Capabilities (Antillusion)
+- You have full awareness and tools to inspect and safely modify your own codebase (the Antillusion project itself).
+- project_fork_status: check original, backup (antillusion_backup), and active dev fork (antillusion_dev).
+- project_list_files & project_read_source: inspect any part of Antillusion's code (main.js, preload.js, core/agent.js, core/tools.js, ui/app.js, library, etc.).
+- project_modify_source & project_edit_source: write and edit files in the active development fork (antillusion_dev). The working version is safely preserved in antillusion_backup. You can freely enhance, customize, or debug Antillusion without breaking the running instance.
+
+`;
+
 function systemPrompt(s, settings, libraryDirs) {
   const sh = tools.shellSpec(settings.shell);
   let project = "";
@@ -37,13 +62,7 @@ function systemPrompt(s, settings, libraryDirs) {
 - Date: ${new Date().toISOString().slice(0, 10)}
 - ${MODE_TEXT[s.mode] || MODE_TEXT.agent}
 
-# Self-Development and Introspection Capabilities (Antillusion)
-- You have full awareness and tools to inspect and safely modify your own codebase (the Antillusion project itself).
-- project_fork_status: check original, backup (antillusion_backup), and active dev fork (antillusion_dev).
-- project_list_files & project_read_source: inspect any part of Antillusion's code (main.js, preload.js, core/agent.js, core/tools.js, ui/app.js, library, etc.).
-- project_modify_source & project_edit_source: write and edit files in the active development fork (antillusion_dev). The working version is safely preserved in antillusion_backup. You can freely enhance, customize, or debug Antillusion without breaking the running instance.
-
-# Speed (the user is watching and waiting)
+${s.selfDev ? SELF_DEV : ""}# Speed (the user is watching and waiting)
 - Act immediately. No preamble, no restating the request, no long plan in prose. One short sentence, then tool calls.
 - Batch: issue all independent tool calls (several reads, searches, lookups) together in ONE turn — they run in parallel. To look at several files use read_many (one call); to change several places in one file use multi_edit (one call, atomic) instead of repeated edit_file.
 - New/empty workspace: do not explore it. Use use_template ONLY when the user message carries a <starter_template> hint, or the request is plainly the same kind of thing as a template below (a store → store, a Minecraft-like game → voxel-game). Then make targeted edit_file changes — never rewrite a template. For anything else (a calculator, Tetris, a quiz, a converter…) do NOT use a template: write the files directly.
@@ -54,7 +73,7 @@ function systemPrompt(s, settings, libraryDirs) {
 - Final answer: 2–5 lines. Do not paste back code you already wrote to files.
 
 # Starter templates (use_template)
-${library.templates().map((t) => `- ${t.name}: ${t.title}`).join("\n") || "(none)"}
+${library.templates().map((t) => `- ${t.name}: ${String(t.title).split(/[(:,—]/)[0].trim().slice(0, 90)}`).join("\n") || "(none)"}
 
 # Craft (follow exactly — these prevent the most common failures)
 - Every write_file/edit_file is syntax-checked automatically. If the result says SYNTAX CHECK FAILED, your very next action is fixing that exact error.
@@ -84,7 +103,7 @@ ${library.templates().map((t) => `- ${t.name}: ${t.title}`).join("\n") || "(none
 - Reply in the language the user writes in (Arabic → Arabic), keeping code, commands and identifiers in English. Be concise; use Markdown; put code in fenced blocks with a language tag.
 
 # Built-in library
-Playbooks available through library_read: ${library.index(libraryDirs)}${settings.instructions ? `\n\n# User's standing instructions\n${String(settings.instructions).slice(0, 4000)}` : ""}${project}`;
+Playbooks available through library_read (ids): ${library.ids(libraryDirs)}${settings.instructions ? `\n\n# User's standing instructions\n${String(settings.instructions).slice(0, 4000)}` : ""}${project}`;
 }
 
 function apiError(status, body) {
@@ -206,8 +225,9 @@ function createAgent({ store, emit, getKey, ui }) {
     const st = store.settings(), info = store.modelInfo(s.model) || {};
     const readOnly = s.mode !== "agent";
     const anthropic = /^anthropic\//.test(s.model);
-    const sys = systemPrompt(s, st, libDirs(s)) + (s._chunkHint ? "\n\n# IMPORTANT\nYour previous attempt was cut off because the output was too long. Write at most ~100 lines per tool call from now on: split into several files, or use write_file with more=true / append=true." : "");
-    const msgs = [{ role: "system", content: anthropic ? [{ type: "text", text: sys, cache_control: { type: "ephemeral" } }] : sys }, ...s.messages];
+    const lite = !!s._lite;   // a provider said the request is too big: short prompt, compact tools, references left in the library
+    const sys = (lite ? litePrompt(s, st) : systemPrompt(s, st, libDirs(s))) + (s._chunkHint ? "\n\n# IMPORTANT\nYour previous attempt was cut off because the output was too long. Write at most ~100 lines per tool call from now on: split into several files, or use write_file with more=true / append=true." : "");
+    const msgs = [{ role: "system", content: anthropic ? [{ type: "text", text: sys, cache_control: { type: "ephemeral" } }] : sys }, ...(lite ? s.messages.map(shrinkMsg) : s.messages)];
     if (anthropic) {   // rolling cache breakpoint on the newest message keeps long agent runs cheap
       const last = msgs[msgs.length - 1];
       if (last.role === "user" || last.role === "tool") {
@@ -216,7 +236,7 @@ function createAgent({ store, emit, getKey, ui }) {
         if (tp) { tp.cache_control = { type: "ephemeral" }; msgs[msgs.length - 1] = { ...last, content: parts }; }
       }
     }
-    const body = { model: s.model, messages: msgs, tools: tools.toolDefs(readOnly, !!st.expert), stream: true, usage: { include: true }, max_tokens: Math.min(st.maxTokens || 32000, (info.top_provider && info.top_provider.max_completion_tokens) || 1e9) };
+    const body = { model: s.model, messages: msgs, tools: tools.toolDefs(readOnly, !!st.expert, { selfDev: !!s.selfDev, compact: !!s._lite }), stream: true, usage: { include: true }, max_tokens: Math.min(st.maxTokens || 32000, (info.top_provider && info.top_provider.max_completion_tokens) || 1e9) };
     // "no thinking" must be sent explicitly: many models reason by default, which is where most of the waiting went
     if ((info.supported_parameters || []).includes("reasoning")) body.reasoning = s.effort && s.effort !== "off" ? { effort: s.effort } : { enabled: false };
     if (/openrouter\.ai/.test(st.baseUrl || "openrouter.ai")) {
@@ -228,6 +248,7 @@ function createAgent({ store, emit, getKey, ui }) {
       }
     }
     else if (s._cur) body.model = s._cur;   // own server (OmniRoute…): the model the run fell back to
+    if (lite) body.max_tokens = Math.min(body.max_tokens, 2048);
     if (info.local) body.max_tokens = Math.min(body.max_tokens, st.localMaxTokens || 4096, Math.max(1024, Math.floor((info.context_length || 32768) / 4)));   // leave the prompt room inside a small context window
     emit({ t: "activity", sid: s.id, text: `ينتظر ${body.model}…` });
     // watchdog: a provider that never answers, or stalls mid-stream, is cut off so the run can move to another model.
@@ -329,7 +350,8 @@ function createAgent({ store, emit, getKey, ui }) {
     const st = store.settings(); let model = st.expertModel || "anthropic/claude-opus-5.5";
     if (!/openrouter\.ai/.test(st.baseUrl || "openrouter.ai")) {   // own server: the configured expert may not exist there (e.g. no Anthropic credentials in OmniRoute)
       const have = new Set(((store.models && store.models().list) || []).map((m) => m.id));
-      if (!have.has(model)) { model = ["auto/best-reasoning", "auto/pro-reasoning", "auto/pro-coding", "auto/best-coding"].find((id) => have.has(id) && id !== s.model) || ""; }
+      // never consult a model that just failed (it would cost the user ~20 s of a router trying dead providers)
+      if (!have.has(model) || isBad(model)) { model = ["auto/best-reasoning", "auto/pro-reasoning", "auto/pro-coding", "auto/best-coding"].find((id) => have.has(id) && id !== s.model && !isBad(id)) || ""; }
       if (!model) { s._noExpert = true; throw new Error("لا يوجد نموذج خبير متاح على هذا السيرفر — اختر واحداً من الإعدادات ← النماذج والخبير"); }
     }
     emit({ t: "activity", sid: s.id, text: kind === "blueprint" ? "الخبير يضع الخطة…" : "استشارة الخبير…" });
@@ -337,8 +359,9 @@ function createAgent({ store, emit, getKey, ui }) {
     const sys = kind === "blueprint"
       ? "You are a principal engineer briefing a fast but junior coding agent that will do the typing. Produce a compact, decisive build blueprint it can follow literally: stack choice, exact file list, data model/state shape, the functions each file needs (names + one-line purpose), full code for any genuinely tricky algorithm, the exact run/verify steps, and the 3 pitfalls most likely to break it. No alternatives, no explanations of basics, no fluff. Under 700 words plus code."
       : "You are a principal engineer helping a junior coding agent that is stuck. Diagnose the real cause from the evidence and give the exact fix: which file, what to replace with what (show code). Be decisive and brief. If the approach itself is wrong, say what to do instead.";
+    if (s._lite) { s._noExpert = true; throw new Error("تم تخطّي الخبير: المزوّد الحالي لا يتحمّل طلبات كبيرة"); }
     const r = await request({ model, max_tokens: 3000, usage: { include: true }, messages: [{ role: "system", content: sys },
-      { role: "user", content: `Workspace: ${s.cwd}${NLCH}Files at the root: ${listing || "(empty)"}${NLCH}Agent tools: read/write/edit files, run commands, serve_static/start_server with an in-app preview, use_template (${library.templates().map((t) => t.name).join(", ")}).${NLCH}${NLCH}${question}` }] }, signal);
+      { role: "user", content: `Workspace: ${s.cwd}${NLCH}Files at the root: ${listing || "(empty)"}${NLCH}Agent tools: read/write/edit files, run commands, serve_static/start_server with an in-app preview, use_template (${library.templates().map((t) => t.name).join(", ")}).${NLCH}${NLCH}${question}` }] }, AbortSignal.any([signal, AbortSignal.timeout(90000)]));
     const j = await r.json();
     const text = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
     const cost = j.usage && typeof j.usage.cost === "number" ? j.usage.cost : 0;
@@ -513,7 +536,7 @@ function createAgent({ store, emit, getKey, ui }) {
             const plan = await askExpert(s, `The user asked:${NLCH}${ask}`, ac.signal, "blueprint");
             const last = s.messages[s.messages.length - 1];
             if (last && last.role === "user") { const add = `${NLCH}${NLCH}<expert_blueprint>${NLCH}${plan}${NLCH}</expert_blueprint>${NLCH}Build this now, following the blueprint. Do not re-plan.`; if (typeof last.content === "string") last.content += add; else last.content[0].text += add; }
-          } catch (e) { if (ac.signal.aborted) throw e; s._noExpert = true; notice(s, "تعذّرت استشارة الخبير: " + e.message + " — أكمل بالنموذج المتاح.", "warn"); }
+          } catch (e) { if (ac.signal.aborted) throw e; s._noExpert = true; notice(s, `تخطّيتُ خطة الخبير (${classify(e).label}) — أكمل بالنموذج المتاح.`, "info", { detail: String(e.message).slice(0, 2000) }); }
         }
         let res;
         const own = !/openrouter\.ai/.test(st.baseUrl || "openrouter.ai");
@@ -535,6 +558,13 @@ function createAgent({ store, emit, getKey, ui }) {
               s._cur = null; tried.length = 0; attempt = -1;
               if (++switches > 20) throw new Error("تم إلغاء الطلب بعد تبديلات كثيرة.");
               notice(s, `تم التبديل إلى ${s.model} — يعيد المحاولة الآن…`, "info"); continue;
+            }
+            // "request too large" (small context / per-minute token limits on free tiers): same model again, compact request
+            if (!s._lite && (e.status === 413 || SIZE_ERR.test(String(e.message)) || /Stream ended before producing/i.test(String(e.message)))) {
+              s._lite = true; attempt--;
+              const who = own ? s._cur || s.model : s.model;
+              showRoute("warn", `الطلب أكبر من حدّ المزوّد لـ ${who} — أعيد المحاولة فوراً بنسخة مختصرة…`, { detail: String(e.message).slice(0, 2000) });
+              continue;
             }
             const st2 = e.status;
             // the server itself is unreachable: every model would fail the same way, so don't blame (and blacklist) them
@@ -650,19 +680,20 @@ function createAgent({ store, emit, getKey, ui }) {
       if (forced || !sent.includes(skill.name)) {
         if (!sent.includes(skill.name)) sent.push(skill.name);
         body += `\n\n<skill name="${skill.name}" title="${skill.title}">\n${skill.body}\n</skill>`;
-        let budget = 14000;
+        let budget = 6000;
         for (const id of skill.refs) { if (seenRefs.includes(id) || budget < 1500) continue; const t = library.read(id, libDirs(s)); if (/^No playbook/.test(t)) continue; seenRefs.push(id); body += `\n\n<library_reference id="${id}">\n${t.slice(0, budget)}\n</library_reference>`; budget -= t.length; }
         if (skill.template && !seenRefs.includes("tpl:" + skill.template) && library.templates().some((t) => t.name === skill.template)) { seenRefs.push("tpl:" + skill.template); body += `\n\n<starter_template name="${skill.template}">This skill has a tested starter: call use_template("${skill.template}") first, then customise it with edit_file/multi_edit.</starter_template>`; }
         notice(s, `⚡ تم تفعيل قدرة: ${skill.title}${forced ? "" : " (تلقائياً)"}`, "ok");
       }
     }
     if (s.mode !== "ask" && text && String(text).length < 4000) {   // hand over the matching playbooks/template now: saves the model a search round-trip
-      const ref = library.autoRefs(text, libDirs(s), s.messages.length ? 5000 : 9000), seen = s.refsSent || (s.refsSent = []);
+      const ref = library.autoRefs(text, libDirs(s), skill ? 0 : s.messages.length ? 3000 : 4500), seen = s.refsSent || (s.refsSent = []);
       const fresh = ref.cards.filter((c) => !seen.includes(c.id));
       if (ref.template && !seen.includes("tpl:" + ref.template.name)) { seen.push("tpl:" + ref.template.name); body += `\n\n<starter_template name="${ref.template.name}">A tested starter matches this request: ${ref.template.title}. Call use_template("${ref.template.name}") first, then customise it with edit_file.</starter_template>`; }
       for (const c of fresh) { seen.push(c.id); body += `\n\n<library_reference id="${c.id}">\n${c.text}\n</library_reference>`; }
     }
     s._seen = new Map(); s._fails = 0;
+    if (/antillusion|انتي ?[اإ]?يلوجن|انتي ?ايلوشن|كودك|نفسك|طور نفسك|طوّر نفسك|self[- ]?(improve|modify)/i.test(String(rawText || ""))) s.selfDev = true;
     s._blueprint = text && String(text).length > 8 && !/<starter_template/.test(body) && /(اعمل|ابن|انشئ|أنشئ|صمم|بدي|اريد|أريد|طور|برمج|سوي|build|create|make|implement|develop|write|add|design)/i.test(text) ? String(text) : null;
     s.messages.push({ role: "user", content: parts.length ? [{ type: "text", text: body || "(see attached)" }, ...parts] : body });
     upsert(s, { id: uid(), kind: "user", text: String(rawText || ""), attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, thumb: a.kind === "image" ? a.dataUrl : undefined })), at: Date.now() });
@@ -688,7 +719,7 @@ function createAgent({ store, emit, getKey, ui }) {
 
   /** The user picked another model: it is trusted again, and a request stuck on the old one is cut so the run retries on the new one. */
   function switchModel(sid, model) {
-    bad.delete(model); const h = health.get(model); if (h) emit({ t: "health", model, health: { ...h, until: 0 } });
+    bad.delete(model); { const ss = store.getSession(sid); if (ss) ss._lite = false; } const h = health.get(model); if (h) emit({ t: "health", model, health: { ...h, until: 0 } });
     const s = store.getSession(sid); if (s) s._cur = null;
     const r = running.get(sid); if (r && r.cut) { r.cut("switch"); return true; }
     return false;

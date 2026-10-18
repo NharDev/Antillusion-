@@ -208,3 +208,17 @@ details.notice.route.settled[open] { border-radius: 18px; align-self: stretch; }
 .scout-h { display: flex; align-items: center; justify-content: space-between; gap: 16px; } .scout-h h4 { margin: 0 0 2px; } .scout-h small { display: block; max-width: 60ch; line-height: 1.6; }
 .scout-h .btn { flex: none; gap: 8px; }
 .scout-ok { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; } .scout-ok .rt-hop { cursor: pointer; } .scout-ok .rt-hop + .rt-hop::before { content: none; }
+
+/* ---------- exits: everything that animates in animates out ---------- */
+.modal-wrap.leaving, .wn-wrap.leaving { animation: wrapOut .2s ease forwards; pointer-events: none; }
+.modal-wrap.leaving .modal { animation: sheetOut .2s var(--ease) forwards; }
+.pop.leaving { animation: popOut .15s ease forwards; pointer-events: none; }
+.upd-banner.leaving, .activity.leaving { animation: popOut .16s ease forwards; }
+#panel { animation: panelIn .26s var(--spring); } #main #panel.leaving { animation: panelOut .22s var(--ease) forwards; pointer-events: none; }
+#sidebar { animation: sideIn .26s var(--spring); } .side-leaving #sidebar { animation: sideOut .2s var(--ease) forwards; pointer-events: none; }
+@keyframes wrapOut { to { opacity: 0; } }
+@keyframes sheetOut { to { opacity: 0; transform: translateY(12px) scale(.97); } }
+@keyframes popOut { to { opacity: 0; transform: translateY(4px) scale(.97); } }
+@keyframes panelIn { from { opacity: 0; transform: translateX(24px); } } @keyframes panelOut { to { opacity: 0; transform: translateX(24px); } }
+[dir="rtl"] #panel, #main.pleft #panel { animation-name: panelInL; } @keyframes panelInL { from { opacity: 0; transform: translateX(-24px); } }
+@keyframes sideIn { from { opacity: 0; transform: translateX(-16px); } } @keyframes sideOut { to { opacity: 0; transform: translateX(-16px); } }
