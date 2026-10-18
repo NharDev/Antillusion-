@@ -58,7 +58,7 @@ public class AntiSetupWindow : Form
         ClientSize = new Size(W, H);
         BackColor = Color.Black;
         DoubleBuffered = true;
-        SetStyle(ControlStyles.AllPaintingInPaintEvent | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer, true);
         mono = new Font("Consolas", 10.5f); monoBold = new Font("Consolas", 11f, FontStyle.Bold); monoSmall = new Font("Consolas", 9f);
         ui = new Font("Segoe UI", 12.5f); uiBold = new Font("Segoe UI Semibold", 12.5f); tiny = new Font("Segoe UI", 8.5f);
         GraphicsPath gp = Round(new RectangleF(0, 0, W, H), 16); Region = new Region(gp);
