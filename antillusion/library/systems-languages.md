@@ -1,0 +1,14 @@
+# Rust, Go, C#, Java/Kotlin, C/C++ quick reference
+tags: rust cargo go golang csharp dotnet java kotlin gradle maven c cpp cmake compile build رست جو سي شارب جافا
+
+Rust: `cargo new app`, `cargo add serde -F derive`, `cargo run`, `cargo test`, `cargo clippy`, `cargo fmt`, `cargo build --release`. Ownership: one owner; borrow `&T` (many) or `&mut T` (one); clone deliberately. Errors: `Result<T, E>` + `?`; `anyhow::Result` in apps, `thiserror` enums in libraries; no `unwrap()` outside tests/prototypes. Use iterators, `match` exhaustively, `Option` instead of null, `Arc<Mutex<T>>` / channels for sharing across threads, tokio for async I/O. Read compiler errors literally — they usually contain the fix.
+
+Go: `go mod init example.com/app`, `go run .`, `go test ./...`, `go vet ./...`, `gofmt -w .`, `go build -o app`. Errors are values: `if err != nil { return fmt.Errorf("load config: %w", err) }`. Small interfaces defined by the consumer; `context.Context` first parameter for anything cancellable; goroutines + channels, `sync.WaitGroup`, `errgroup`; `defer` for cleanup; zero values are useful; standard library first (`net/http`, `encoding/json`, `database/sql`, `log/slog`).
+
+C# / .NET: `dotnet new console|webapi|classlib -n Name`, `dotnet add package X`, `dotnet run`, `dotnet test`, `dotnet publish -c Release -r win-x64 --self-contained`. Nullable reference types on; `async`/`await` all the way (never `.Result`); records for data, `using` for disposables, LINQ for collections, dependency injection through the built-in container, `ILogger<T>`, minimal APIs (`app.MapGet("/todos", (Db db) => db.Todos.ToListAsync())`), EF Core migrations (`dotnet ef migrations add Init && dotnet ef database update`).
+
+Java / Kotlin: Gradle (`./gradlew build|test|run`; on Windows `gradlew.bat`) or Maven (`mvn -q package`). Spring Boot: `@RestController`, constructor injection, `application.yml`, Spring Data repositories, `./gradlew bootRun` (port 8080). Kotlin: `val` over `var`, data classes, null-safety (`?.`, `?:`), coroutines (`suspend`, `launch`, `async`), sealed classes for state. Android: Jetpack Compose UI, ViewModel + StateFlow, Room, Hilt, `./gradlew assembleDebug`.
+
+C / C++: CMake — `cmake -S . -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build --config Release`; dependencies via vcpkg or FetchContent. Modern C++ (17/20): RAII, `std::unique_ptr`/`shared_ptr` instead of raw `new`, `std::vector`/`std::string`/`std::span`/`std::optional`, range-for, `const` correctness, no manual memory unless measured. Compile with warnings (`-Wall -Wextra` / `/W4`) and sanitizers in debug (`-fsanitize=address,undefined`). On Windows the compiler is MSVC (needs the Visual Studio Build Tools developer prompt) or MinGW/clang.
+
+Check a toolchain exists before relying on it: `cargo --version`, `go version`, `dotnet --version`, `java -version`, `cmake --version` — and tell the user what to install if it is missing instead of failing silently.

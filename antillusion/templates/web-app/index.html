@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مهامي</title>
+<style>
+  :root { --bg: #f6f6f4; --surface: #fff; --line: #e3e2dd; --ink: #1d1f1e; --muted: #6d726f; --brand: #2d6cdf; --brand-ink: #fff; --danger: #cf3e36; --ok: #2c9a62; --radius: 12px; font-family: "Segoe UI", Tahoma, system-ui, sans-serif; }
+  [data-theme="dark"] { --bg: #121413; --surface: #1a1d1c; --line: #2a2e2c; --ink: #e9ecea; --muted: #98a09c; --brand: #6ea0ff; --brand-ink: #0b1220; }
+  * { box-sizing: border-box; } body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.7; }
+  button, input, select { font: inherit; color: inherit; }
+  .app { max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; } h1 { margin: 0; font-size: 1.7rem; flex: 1; }
+  .btn { padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; } .btn:hover { border-color: var(--muted); }
+  .btn.primary { background: var(--brand); color: var(--brand-ink); border-color: var(--brand); font-weight: 600; } .btn.icon { padding: 6px 10px; }
+  :focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 45%, transparent); outline-offset: 2px; }
+  form.add { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; margin-bottom: 14px; }
+  input[type="text"], input[type="search"], select { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); width: 100%; min-width: 0; }
+  .bar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; } .bar input { flex: 1; min-width: 160px; }
+  .tabs { display: flex; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px; } .tabs button { border: 0; background: none; padding: 5px 13px; border-radius: 8px; cursor: pointer; color: var(--muted); } .tabs button.on { background: var(--brand); color: var(--brand-ink); }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; }
+  li.item { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 14px; }
+  li.item.done .title { text-decoration: line-through; color: var(--muted); } .title { flex: 1; overflow-wrap: anywhere; } .title[contenteditable="true"] { outline: 2px solid var(--brand); border-radius: 6px; padding: 0 6px; }
+  .tag { font-size: .78rem; padding: 1px 10px; border-radius: 99px; background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand); white-space: nowrap; }
+  .tag.high { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); } .tag.low { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+  input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--brand); flex: none; }
+  .empty { text-align: center; color: var(--muted); padding: 44px 0; } .stats { color: var(--muted); font-size: .9rem; margin-top: 14px; display: flex; justify-content: space-between; gap: 8px; }
+  #toast { position: fixed; bottom: 20px; inset-inline: 0; margin: auto; width: fit-content; background: var(--ink); color: var(--bg); padding: 9px 16px; border-radius: 99px; display: flex; gap: 12px; align-items: center; } #toast[hidden] { display: none; } #toast button { background: none; border: 0; color: inherit; text-decoration: underline; cursor: pointer; }
+  @media (max-width: 520px) { form.add { grid-template-columns: 1fr 1fr; } form.add input { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header><h1>مهامي</h1><button class="btn icon" id="theme" title="تبديل السِّمة" aria-label="تبديل السِّمة">◐</button></header>
+  <form class="add" id="add">
+    <input type="text" id="title" placeholder="أضف مهمة جديدة…" autocomplete="off" required maxlength="200" aria-label="عنوان المهمة">
+    <select id="priority" aria-label="الأولوية"><option value="normal">عادية</option><option value="high">عاجلة</option><option value="low">منخفضة</option></select>
+    <button class="btn primary">إضافة</button>
+  </form>
+  <div class="bar">
+    <input type="search" id="q" placeholder="بحث…" aria-label="بحث">
+    <div class="tabs" id="tabs" role="tablist"><button data-f="all" class="on">الكل</button><button data-f="open">غير منجزة</button><button data-f="done">منجزة</button></div>
+  </div>
+  <ul id="list" aria-live="polite"></ul>
+  <div class="empty" id="empty" hidden>لا توجد مهام هنا.</div>
+  <div class="stats"><span id="count"></span><button class="btn" id="clear">حذف المنجزة</button></div>
+</div>
+<div id="toast" hidden><span id="toastText"></span><button id="undo">تراجع</button></div>
+<script>
+// One state object, one render(). Persistence sits behind `db`, so swapping localStorage for an API touches only this object.
+const db = {
+  load() { try { return JSON.parse(localStorage.getItem("tasks")) || []; } catch { return []; } },
+  save(items) { localStorage.setItem("tasks", JSON.stringify(items)); },
+};
+const state = { items: db.load(), filter: "all", q: "", lastDeleted: null };
+const PRIORITY = { high: "عاجلة", normal: "عادية", low: "منخفضة" };
+const $ = (s) => document.querySelector(s);
+
+function commit() { db.save(state.items); render(); }
+function visible() {
+  const q = state.q.trim().toLowerCase();
+  return state.items.filter((t) => (state.filter === "all" || (state.filter === "done") === t.done) && (!q || t.title.toLowerCase().includes(q)));
+}
+function render() {
+  const items = visible(), list = $("#list");
+  list.replaceChildren(...items.map((t) => {
+    const li = document.createElement("li"); li.className = "item" + (t.done ? " done" : ""); li.dataset.id = t.id;
+    const cb = Object.assign(document.createElement("input"), { type: "checkbox", checked: t.done }); cb.dataset.action = "toggle"; cb.setAttribute("aria-label", "إنجاز: " + t.title);
+    const title = Object.assign(document.createElement("span"), { className: "title", textContent: t.title }); title.dataset.action = "edit"; title.title = "انقر مرتين للتعديل";
+    const tag = Object.assign(document.createElement("span"), { className: "tag " + t.priority, textContent: PRIORITY[t.priority] });
+    const del = Object.assign(document.createElement("button"), { className: "btn icon", textContent: "✕" }); del.dataset.action = "delete"; del.setAttribute("aria-label", "حذف: " + t.title);
+    li.append(cb, title, tag, del); return li;
+  }));
+  $("#empty").hidden = items.length > 0;
+  const open = state.items.filter((t) => !t.done).length;
+  $("#count").textContent = `${open} غير منجزة من ${state.items.length}`;
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.f === state.filter));
+}
+function toast(text, undoable) { $("#toastText").textContent = text; $("#undo").hidden = !undoable; $("#toast").hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => ($("#toast").hidden = true), 4500); }
+
+$("#add").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const title = $("#title").value.trim(); if (!title) return;
+  state.items.unshift({ id: crypto.randomUUID(), title, priority: $("#priority").value, done: false, created: Date.now() });
+  $("#title").value = ""; commit();
+});
+$("#list").addEventListener("click", (e) => {
+  const el = e.target.closest("[data-action]"); if (!el) return;
+  const id = el.closest("li").dataset.id, item = state.items.find((t) => t.id === id);
+  if (el.dataset.action === "toggle") { item.done = el.checked; commit(); }
+  if (el.dataset.action === "delete") { state.lastDeleted = { item, index: state.items.indexOf(item) }; state.items = state.items.filter((t) => t.id !== id); commit(); toast("حُذفت المهمة", true); }
+});
+$("#list").addEventListener("dblclick", (e) => {
+  const el = e.target.closest('[data-action="edit"]'); if (!el) return;
+  el.contentEditable = "true"; el.focus();
+  const done = () => { el.contentEditable = "false"; const item = state.items.find((t) => t.id === el.closest("li").dataset.id); const v = el.textContent.trim(); if (v) item.title = v; commit(); };
+  el.addEventListener("blur", done, { once: true });
+  el.addEventListener("keydown", (ev) => { if (ev.key === "Enter") { ev.preventDefault(); el.blur(); } if (ev.key === "Escape") { el.textContent = state.items.find((t) => t.id === el.closest("li").dataset.id).title; el.blur(); } });
+});
+$("#tabs").addEventListener("click", (e) => { if (e.target.dataset.f) { state.filter = e.target.dataset.f; render(); } });
+$("#q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
+$("#clear").addEventListener("click", () => { const n = state.items.filter((t) => t.done).length; state.items = state.items.filter((t) => !t.done); commit(); if (n) toast(`حُذفت ${n} مهمة منجزة`, false); });
+$("#undo").addEventListener("click", () => { const d = state.lastDeleted; if (d) { state.items.splice(d.index, 0, d.item); state.lastDeleted = null; commit(); } $("#toast").hidden = true; });
+$("#theme").addEventListener("click", () => { const t = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; document.documentElement.dataset.theme = t; localStorage.setItem("theme", t); });
+document.documentElement.dataset.theme = localStorage.getItem("theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+render();
+window.app = { state, render };   // for automated checks
+</script>
+</body>
+</html>

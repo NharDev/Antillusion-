@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>المتجر</title>
+<style>
+  :root { --bg: #faf9f6; --surface: #fff; --line: #e6e3db; --ink: #1c1b19; --muted: #716d64; --brand: #1f6f5c; --brand-ink: #fff; --radius: 16px; font-family: "Segoe UI", Tahoma, system-ui, sans-serif; }
+  * { box-sizing: border-box; } body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.7; } button, input, select { font: inherit; color: inherit; } img { max-width: 100%; display: block; }
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 14px; padding: 12px clamp(14px, 4vw, 48px); background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .logo { font-weight: 800; font-size: 1.25rem; } header input { flex: 1; max-width: 420px; margin-inline: auto; padding: 9px 14px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); }
+  .btn { padding: 9px 18px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; white-space: nowrap; } .btn.primary { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); font-weight: 600; } .btn:disabled { opacity: .5; cursor: not-allowed; }
+  :focus-visible { outline: 3px solid color-mix(in srgb, var(--brand) 45%, transparent); outline-offset: 2px; }
+  main { padding: 22px clamp(14px, 4vw, 48px) 60px; max-width: 1240px; margin: 0 auto; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; } .chip { padding: 5px 15px; border-radius: 99px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; } .chip.on { background: var(--ink); color: var(--bg); border-color: var(--ink); } .filters select { margin-inline-start: auto; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); }
+  .grid { display: grid; gap: 18px; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; transition: transform .15s, box-shadow .15s; } .card:hover { transform: translateY(-3px); box-shadow: 0 12px 30px rgb(0 0 0 / .08); }
+  .thumb { aspect-ratio: 4 / 3; display: grid; place-items: center; font-size: 3.4rem; } .card .body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; } .card h3 { margin: 0; font-size: 1.02rem; } .card p { margin: 0; color: var(--muted); font-size: .9rem; flex: 1; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; } .price { font-weight: 700; font-size: 1.1rem; }
+  .empty { text-align: center; color: var(--muted); padding: 60px 0; grid-column: 1 / -1; }
+  #cart { position: fixed; inset-block: 0; inset-inline-end: 0; width: min(400px, 100%); background: var(--surface); border-inline-start: 1px solid var(--line); box-shadow: 0 0 60px rgb(0 0 0 / .18); display: flex; flex-direction: column; translate: -105% 0; transition: translate .25s; z-index: 20; } [dir="ltr"] #cart { translate: 105% 0; } #cart.open { translate: 0 0; }
+  #cart h2 { margin: 0; padding: 16px 18px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; font-size: 1.15rem; } #lines { flex: 1; overflow: auto; padding: 8px 18px; }
+  .line { display: grid; grid-template-columns: 44px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); } .line .em { font-size: 1.8rem; text-align: center; } .qty { display: flex; align-items: center; gap: 6px; } .qty button { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); cursor: pointer; }
+  .foot { padding: 16px 18px; border-top: 1px solid var(--line); display: grid; gap: 10px; } .total { display: flex; justify-content: space-between; font-weight: 700; font-size: 1.1rem; }
+  #shade { position: fixed; inset: 0; background: rgb(0 0 0 / .4); z-index: 15; } #shade[hidden] { display: none; }
+  dialog { border: 0; border-radius: var(--radius); padding: 24px; width: min(440px, 92vw); background: var(--surface); color: var(--ink); } dialog::backdrop { background: rgb(0 0 0 / .5); } dialog form { display: grid; gap: 12px; } dialog label { display: grid; gap: 4px; font-size: .92rem; font-weight: 600; } dialog input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
+  .badge { background: var(--brand); color: var(--brand-ink); border-radius: 99px; padding: 0 8px; font-size: .8rem; margin-inline-start: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">اسم المتجر</span>
+  <input type="search" id="q" placeholder="ابحث عن منتج…" aria-label="بحث">
+  <button class="btn" id="openCart">السلة<span class="badge" id="count">0</span></button>
+</header>
+<main>
+  <div class="filters" id="filters"></div>
+  <div class="grid" id="grid"></div>
+</main>
+<div id="shade" hidden></div>
+<aside id="cart" aria-label="سلة المشتريات">
+  <h2>سلة المشتريات <button class="btn" id="closeCart" aria-label="إغلاق">✕</button></h2>
+  <div id="lines"></div>
+  <div class="foot"><div class="total"><span>الإجمالي</span><span id="total"></span></div><button class="btn primary" id="checkout">إتمام الطلب</button></div>
+</aside>
+<dialog id="dlg">
+  <form id="order" method="dialog">
+    <h2 style="margin:0">بيانات الطلب</h2>
+    <label>الاسم<input name="name" required autocomplete="name"></label>
+    <label>رقم الجوال<input name="phone" required inputmode="tel" pattern="[0-9+ ]{8,15}" dir="ltr"></label>
+    <label>العنوان<input name="address" required autocomplete="street-address"></label>
+    <div class="row"><button class="btn" type="button" id="cancel">إلغاء</button><button class="btn primary" type="submit">تأكيد الطلب</button></div>
+  </form>
+</dialog>
+<script>
+// Catalogue: replace with the user's real products (or fetch("/api/products")). Prices are integers in the smallest unit (halalas/cents).
+const PRODUCTS = [
+  { id: "p1", name: "قهوة مختصة — إثيوبيا", desc: "تحميص متوسط، نكهات توت وياسمين. 250 غ.", price: 5900, cat: "قهوة", emoji: "☕", color: "#efe1d1" },
+  { id: "p2", name: "قهوة مختصة — كولومبيا", desc: "تحميص غامق، شوكولاتة وكراميل. 250 غ.", price: 5400, cat: "قهوة", emoji: "🫘", color: "#e7d5c3" },
+  { id: "p3", name: "مطحنة يدوية", desc: "طواحين فولاذية، 40 درجة طحن.", price: 18900, cat: "أدوات", emoji: "⚙️", color: "#dfe6ea" },
+  { id: "p4", name: "إبريق تقطير", desc: "رقبة إوزة، 600 مل، ستانلس.", price: 14500, cat: "أدوات", emoji: "🫖", color: "#e2ece4" },
+  { id: "p5", name: "كوب سيراميك", desc: "صناعة يدوية، 300 مل.", price: 4500, cat: "أكواب", emoji: "🍵", color: "#f1e6dc" },
+  { id: "p6", name: "فلاتر ورقية V60", desc: "100 فلتر، مقاس 02.", price: 2900, cat: "أدوات", emoji: "📄", color: "#eeeeea" },
+  { id: "p7", name: "شاي ماتشا", desc: "درجة احتفالية، 50 غ.", price: 8900, cat: "شاي", emoji: "🍃", color: "#dcebd5" },
+  { id: "p8", name: "كوب حراري", desc: "يحفظ الحرارة 8 ساعات، 450 مل.", price: 9900, cat: "أكواب", emoji: "🥤", color: "#dde4f0" },
+];
+const money = (n) => new Intl.NumberFormat("ar-SA", { style: "currency", currency: "SAR" }).format(n / 100);
+const state = { q: "", cat: "الكل", sort: "default", cart: JSON.parse(localStorage.getItem("cart") || "{}") };   // cart: { productId: qty }
+const $ = (s) => document.querySelector(s);
+const el = (tag, props = {}, ...kids) => { const n = Object.assign(document.createElement(tag), props); n.append(...kids); return n; };
+
+function products() {
+  const q = state.q.trim().toLowerCase();
+  let list = PRODUCTS.filter((p) => (state.cat === "الكل" || p.cat === state.cat) && (!q || (p.name + p.desc).toLowerCase().includes(q)));
+  if (state.sort === "low") list = [...list].sort((a, b) => a.price - b.price);
+  if (state.sort === "high") list = [...list].sort((a, b) => b.price - a.price);
+  return list;
+}
+function render() {
+  const cats = ["الكل", ...new Set(PRODUCTS.map((p) => p.cat))];
+  const sort = el("select", { ariaLabel: "ترتيب", onchange: (e) => { state.sort = e.target.value; render(); } }, ...[["default", "الترتيب الافتراضي"], ["low", "السعر: الأقل أولاً"], ["high", "السعر: الأعلى أولاً"]].map(([v, t]) => el("option", { value: v, textContent: t, selected: state.sort === v })));
+  $("#filters").replaceChildren(...cats.map((c) => el("button", { className: "chip" + (c === state.cat ? " on" : ""), textContent: c, onclick: () => { state.cat = c; render(); } })), sort);
+  const list = products();
+  $("#grid").replaceChildren(...(list.length ? list.map((p) => {
+    const thumb = el("div", { className: "thumb", textContent: p.emoji }); thumb.style.background = p.color;
+    return el("article", { className: "card" }, thumb, el("div", { className: "body" }, el("h3", { textContent: p.name }), el("p", { textContent: p.desc }),
+      el("div", { className: "row" }, el("span", { className: "price", textContent: money(p.price) }), el("button", { className: "btn primary", textContent: "أضف للسلة", onclick: () => add(p.id, 1) }))));
+  }) : [el("div", { className: "empty", textContent: "لا توجد منتجات مطابقة." })]));
+  renderCart();
+}
+function renderCart() {
+  const entries = Object.entries(state.cart).map(([id, qty]) => [PRODUCTS.find((p) => p.id === id), qty]).filter(([p]) => p);
+  const total = entries.reduce((s, [p, q]) => s + p.price * q, 0), count = entries.reduce((s, [, q]) => s + q, 0);
+  $("#lines").replaceChildren(...(entries.length ? entries.map(([p, q]) => el("div", { className: "line" }, el("div", { className: "em", textContent: p.emoji }),
+    el("div", {}, el("div", { textContent: p.name }), el("small", { textContent: money(p.price * q) })),
+    el("div", { className: "qty" }, el("button", { textContent: "−", ariaLabel: "إنقاص", onclick: () => add(p.id, -1) }), el("span", { textContent: q }), el("button", { textContent: "+", ariaLabel: "زيادة", onclick: () => add(p.id, 1) })))) : [el("div", { className: "empty", textContent: "السلة فارغة." })]));
+  $("#total").textContent = money(total); $("#count").textContent = count; $("#checkout").disabled = !count;
+  localStorage.setItem("cart", JSON.stringify(state.cart));
+}
+function add(id, d) { const q = (state.cart[id] || 0) + d; if (q <= 0) delete state.cart[id]; else state.cart[id] = q; renderCart(); }
+function toggleCart(open) { $("#cart").classList.toggle("open", open); $("#shade").hidden = !open; }
+
+$("#q").addEventListener("input", (e) => { state.q = e.target.value; render(); });
+$("#openCart").addEventListener("click", () => toggleCart(true));
+$("#closeCart").addEventListener("click", () => toggleCart(false));
+$("#shade").addEventListener("click", () => toggleCart(false));
+$("#checkout").addEventListener("click", () => $("#dlg").showModal());
+$("#cancel").addEventListener("click", () => $("#dlg").close());
+$("#order").addEventListener("submit", () => {
+  // Send { customer, items: state.cart } to your server here. Payments must go through a provider (Stripe, etc.), never a hand-made card form.
+  state.cart = {}; renderCart(); toggleCart(false); alert("تم استلام طلبك، سنتواصل معك للتأكيد.");
+});
+render();
+window.shop = { state, add, PRODUCTS };   // for automated checks
+</script>
+</body>
+</html>

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>لوحة التحكم</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+  :root { --bg: #f4f5f7; --surface: #fff; --line: #e4e6ea; --ink: #181b20; --muted: #6a7180; --brand: #3b6cf6; --up: #1f9d61; --down: #d64545; --radius: 14px; font-family: "Segoe UI", Tahoma, system-ui, sans-serif; }
+  [data-theme="dark"] { --bg: #0f1114; --surface: #171a1f; --line: #262a31; --ink: #e8eaee; --muted: #8f97a5; --brand: #7396ff; }
+  * { box-sizing: border-box; } body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.6; } button, input, select { font: inherit; color: inherit; }
+  .shell { display: grid; grid-template-columns: 230px 1fr; min-height: 100dvh; }
+  aside { background: var(--surface); border-inline-end: 1px solid var(--line); padding: 20px 14px; display: flex; flex-direction: column; gap: 4px; } .brand { font-weight: 800; font-size: 1.2rem; padding: 0 10px 16px; }
+  aside a { padding: 9px 12px; border-radius: 10px; color: var(--muted); text-decoration: none; } aside a:hover { background: var(--bg); color: var(--ink); } aside a.on { background: color-mix(in srgb, var(--brand) 13%, transparent); color: var(--brand); font-weight: 600; }
+  main { padding: 22px clamp(14px, 3vw, 34px) 40px; min-width: 0; }
+  .top { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; } .top h1 { margin: 0; font-size: 1.5rem; flex: 1; }
+  .ctl { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 14px; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; } .card h2 { margin: 0 0 12px; font-size: 1rem; }
+  .kpi small { color: var(--muted); } .kpi b { display: block; font-size: 1.75rem; font-variant-numeric: tabular-nums; margin: 2px 0; } .delta { font-size: .85rem; font-weight: 600; } .delta.up { color: var(--up); } .delta.down { color: var(--down); }
+  .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px; } .chart { position: relative; height: 290px; }
+  .tools { display: flex; gap: 8px; margin-bottom: 10px; } .tools input { flex: 1; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); }
+  .tablewrap { overflow-x: auto; } table { width: 100%; border-collapse: collapse; font-size: .93rem; } th, td { text-align: start; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; } th { color: var(--muted); font-weight: 600; cursor: pointer; user-select: none; } td.num { font-variant-numeric: tabular-nums; }
+  .status { padding: 1px 10px; border-radius: 99px; font-size: .8rem; } .status.paid { background: color-mix(in srgb, var(--up) 15%, transparent); color: var(--up); } .status.pending { background: color-mix(in srgb, #d99a1c 18%, transparent); color: #b57a06; } .status.failed { background: color-mix(in srgb, var(--down) 15%, transparent); color: var(--down); }
+  .pager { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; color: var(--muted); font-size: .9rem; }
+  @media (max-width: 860px) { .shell { grid-template-columns: 1fr; } aside { flex-direction: row; overflow-x: auto; border-inline-end: 0; border-bottom: 1px solid var(--line); padding: 10px; } .brand { padding: 6px 10px; } .charts { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <aside><div class="brand">لوحتي</div><a class="on" href="#">نظرة عامة</a><a href="#">الطلبات</a><a href="#">العملاء</a><a href="#">المنتجات</a><a href="#">الإعدادات</a></aside>
+  <main>
+    <div class="top"><h1>نظرة عامة</h1>
+      <select class="ctl" id="range" aria-label="الفترة"><option value="7">آخر 7 أيام</option><option value="30" selected>آخر 30 يوماً</option><option value="90">آخر 90 يوماً</option></select>
+      <button class="ctl" id="theme" aria-label="تبديل السِّمة">◐</button><button class="ctl" id="csv">تصدير CSV</button></div>
+    <section class="kpis" id="kpis"></section>
+    <section class="charts"><div class="card"><h2>الإيرادات اليومية</h2><div class="chart"><canvas id="line"></canvas></div></div><div class="card"><h2>حسب القناة</h2><div class="chart"><canvas id="pie"></canvas></div></div></section>
+    <section class="card"><h2>أحدث الطلبات</h2>
+      <div class="tools"><input type="search" id="q" placeholder="ابحث بالعميل أو رقم الطلب…" aria-label="بحث"></div>
+      <div class="tablewrap"><table><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table></div>
+      <div class="pager"><span id="info"></span><span><button class="ctl" id="prev">السابق</button> <button class="ctl" id="next">التالي</button></span></div>
+    </section>
+  </main>
+</div>
+<script>
+// Demo data is generated here; replace loadData() with fetch("/api/…") and keep the same shape.
+function loadData(days) {
+  const rand = (() => { let s = 42; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); })();   // seeded → stable demo
+  const names = ["سارة أحمد", "محمد علي", "نورة خالد", "عبدالله سعد", "ليان يوسف", "فهد ناصر", "ريم سلمان", "خالد عمر"], channels = ["الموقع", "التطبيق", "المتجر", "واتساب"], statuses = ["paid", "paid", "paid", "pending", "failed"];
+  const orders = [], today = new Date(); today.setHours(0, 0, 0, 0);
+  for (let d = days * 2 - 1; d >= 0; d--) for (let i = 0, n = 3 + Math.floor(rand() * 6); i < n; i++)
+    orders.push({ id: "#" + (10500 + orders.length), customer: names[Math.floor(rand() * names.length)], channel: channels[Math.floor(rand() * channels.length)], status: statuses[Math.floor(rand() * statuses.length)], amount: 40 + Math.floor(rand() * 900), date: new Date(today.getTime() - d * 864e5) });
+  return orders;
+}
+const STATUS = { paid: "مدفوع", pending: "قيد الانتظار", failed: "فشل" };
+const COLS = [["id", "الطلب"], ["customer", "العميل"], ["channel", "القناة"], ["date", "التاريخ"], ["status", "الحالة"], ["amount", "المبلغ"]];
+const money = (n) => new Intl.NumberFormat("ar-SA", { style: "currency", currency: "SAR", maximumFractionDigits: 0 }).format(n);
+const state = { days: 30, q: "", sort: "date", dir: -1, page: 0, size: 8, orders: [] };
+const $ = (s) => document.querySelector(s);
+let line, pie;
+
+function compute() {
+  const cut = Date.now() - state.days * 864e5, cur = state.orders.filter((o) => o.date >= cut), prev = state.orders.filter((o) => o.date < cut);
+  const sum = (l) => l.filter((o) => o.status === "paid").reduce((s, o) => s + o.amount, 0), pct = (a, b) => (b ? ((a - b) / b) * 100 : 0);
+  const byDay = new Map(); for (const o of cur) if (o.status === "paid") { const k = o.date.toISOString().slice(5, 10); byDay.set(k, (byDay.get(k) || 0) + o.amount); }
+  const byChannel = new Map(); for (const o of cur) byChannel.set(o.channel, (byChannel.get(o.channel) || 0) + o.amount);
+  const customers = (l) => new Set(l.map((o) => o.customer)).size, avg = (l) => (l.length ? sum(l) / l.filter((o) => o.status === "paid").length || 0 : 0);
+  return { cur, byDay, byChannel, kpis: [["الإيرادات", money(sum(cur)), pct(sum(cur), sum(prev))], ["الطلبات", cur.length, pct(cur.length, prev.length)], ["العملاء", customers(cur), pct(customers(cur), customers(prev))], ["متوسط الطلب", money(avg(cur)), pct(avg(cur), avg(prev))]] };
+}
+function render() {
+  const d = compute(), css = getComputedStyle(document.documentElement), ink = css.getPropertyValue("--muted").trim(), grid = css.getPropertyValue("--line").trim(), brand = css.getPropertyValue("--brand").trim();
+  $("#kpis").innerHTML = d.kpis.map(([label, value, delta]) => `<div class="card kpi"><small>${label}</small><b>${value}</b><span class="delta ${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "▲" : "▼"} ${Math.abs(delta).toFixed(1)}٪ عن الفترة السابقة</span></div>`).join("");
+  Chart.defaults.color = ink; Chart.defaults.font.family = "Segoe UI, Tahoma, sans-serif";
+  line && line.destroy(); pie && pie.destroy();
+  line = new Chart($("#line"), { type: "line", data: { labels: [...d.byDay.keys()], datasets: [{ data: [...d.byDay.values()], borderColor: brand, backgroundColor: brand + "22", fill: true, tension: .35, pointRadius: 0 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, interaction: { mode: "index", intersect: false }, scales: { x: { reverse: true, grid: { display: false } }, y: { position: "right", beginAtZero: true, grid: { color: grid } } } } });
+  pie = new Chart($("#pie"), { type: "doughnut", data: { labels: [...d.byChannel.keys()], datasets: [{ data: [...d.byChannel.values()], backgroundColor: ["#3b6cf6", "#22a06b", "#e2a03f", "#a55eea"], borderWidth: 0 }] }, options: { maintainAspectRatio: false, cutout: "62%", plugins: { legend: { position: "bottom", rtl: true } } } });
+  renderTable(d.cur);
+}
+function rows(list) {
+  const q = state.q.trim().toLowerCase();
+  return list.filter((o) => !q || (o.customer + o.id).toLowerCase().includes(q)).sort((a, b) => (a[state.sort] > b[state.sort] ? 1 : a[state.sort] < b[state.sort] ? -1 : 0) * state.dir);
+}
+function renderTable(list) {
+  const all = rows(list), pages = Math.max(1, Math.ceil(all.length / state.size)); state.page = Math.min(state.page, pages - 1);
+  $("#head").innerHTML = COLS.map(([k, t]) => `<th data-k="${k}" aria-sort="${state.sort === k ? (state.dir > 0 ? "ascending" : "descending") : "none"}">${t}${state.sort === k ? (state.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("");
+  $("#rows").replaceChildren(...all.slice(state.page * state.size, (state.page + 1) * state.size).map((o) => {
+    const tr = document.createElement("tr");
+    for (const [k] of COLS) { const td = document.createElement("td"); if (k === "status") { const s = document.createElement("span"); s.className = "status " + o.status; s.textContent = STATUS[o.status]; td.append(s); } else td.textContent = k === "amount" ? money(o.amount) : k === "date" ? o.date.toLocaleDateString("ar") : o[k]; if (k === "amount") td.className = "num"; tr.append(td); }
+    return tr;
+  }));
+  $("#info").textContent = all.length ? `صفحة ${state.page + 1} من ${pages} · ${all.length} طلب` : "لا توجد نتائج";
+  $("#prev").disabled = state.page === 0; $("#next").disabled = state.page >= pages - 1;
+}
+$("#head").addEventListener("click", (e) => { const k = e.target.dataset.k; if (!k) return; state.dir = state.sort === k ? -state.dir : 1; state.sort = k; renderTable(compute().cur); });
+$("#q").addEventListener("input", (e) => { state.q = e.target.value; state.page = 0; renderTable(compute().cur); });
+$("#prev").addEventListener("click", () => { state.page--; renderTable(compute().cur); });
+$("#next").addEventListener("click", () => { state.page++; renderTable(compute().cur); });
+$("#range").addEventListener("change", (e) => { state.days = +e.target.value; state.orders = loadData(state.days); state.page = 0; render(); });
+$("#theme").addEventListener("click", () => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "dark" ? "light" : "dark"; render(); });
+$("#csv").addEventListener("click", () => {
+  const csv = "﻿" + [COLS.map((c) => c[1]).join(","), ...rows(compute().cur).map((o) => [o.id, o.customer, o.channel, o.date.toISOString().slice(0, 10), STATUS[o.status], o.amount].join(","))].join("\n");
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([csv], { type: "text/csv" })), download: "orders.csv" }); a.click(); URL.revokeObjectURL(a.href);
+});
+state.orders = loadData(state.days); render();
+window.dash = { state, compute };   // for automated checks
+</script>
+</body>
+</html>

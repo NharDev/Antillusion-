@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>العناصر</title>
+<style>
+  :root { --bg: #f6f6f4; --surface: #fff; --line: #e3e2dd; --ink: #1d1f1e; --muted: #6d726f; --brand: #2d6cdf; font-family: "Segoe UI", Tahoma, system-ui, sans-serif; }
+  * { box-sizing: border-box; } body { margin: 0; background: var(--bg); color: var(--ink); line-height: 1.7; } button, input { font: inherit; color: inherit; }
+  main { max-width: 720px; margin: 0 auto; padding: 28px 16px; } h1 { margin: 0 0 16px; }
+  form { display: grid; grid-template-columns: 1fr 130px auto; gap: 8px; margin-bottom: 12px; } input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
+  button { padding: 9px 16px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; } button.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 8px; } li { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px; } li.done .name { text-decoration: line-through; color: var(--muted); } .name { flex: 1; } .price { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #status { min-height: 1.7em; color: var(--muted); margin: 8px 0; } #status.bad { color: #cf3e36; }
+</style>
+</head>
+<body>
+<main>
+  <h1>العناصر</h1>
+  <form id="add"><input id="name" placeholder="اسم العنصر" required maxlength="200" aria-label="الاسم"><input id="price" type="number" min="0" step="0.01" placeholder="السعر" aria-label="السعر"><button class="primary">إضافة</button></form>
+  <input id="q" type="search" placeholder="بحث…" aria-label="بحث" style="width:100%">
+  <p id="status" role="status"></p>
+  <ul id="list"></ul>
+</main>
+<script>
+// Thin client for the API in server.js. `api()` centralises errors so every call site stays one line.
+const $ = (s) => document.querySelector(s);
+async function api(path, method = "GET", body) {
+  const r = await fetch("/api" + path, { method, headers: body ? { "Content-Type": "application/json" } : {}, body: body && JSON.stringify(body) });
+  if (r.status === 204) return null;
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error ? data.error.message : r.statusText);
+  return data;
+}
+const status = (text, bad) => { $("#status").textContent = text; $("#status").className = bad ? "bad" : ""; };
+const money = (n) => new Intl.NumberFormat("ar-SA", { style: "currency", currency: "SAR" }).format(n / 100);
+
+async function refresh() {
+  try {
+    const { items, total } = await api("/items?limit=50&q=" + encodeURIComponent($("#q").value));
+    $("#list").replaceChildren(...items.map((it) => {
+      const li = document.createElement("li"); li.className = it.done ? "done" : "";
+      const cb = Object.assign(document.createElement("input"), { type: "checkbox", checked: it.done }); cb.onchange = () => run(() => api("/items/" + it.id, "PATCH", { done: cb.checked }));
+      const del = Object.assign(document.createElement("button"), { textContent: "حذف" }); del.onclick = () => run(() => api("/items/" + it.id, "DELETE"));
+      li.append(cb, Object.assign(document.createElement("span"), { className: "name", textContent: it.name }), Object.assign(document.createElement("span"), { className: "price", textContent: money(it.price) }), del);
+      return li;
+    }));
+    status(total ? `${total} عنصر` : "لا توجد عناصر بعد.");
+  } catch (e) { status("تعذّر التحميل: " + e.message, true); }
+}
+async function run(action) { try { await action(); await refresh(); } catch (e) { status(e.message, true); } }
+
+$("#add").addEventListener("submit", (e) => {
+  e.preventDefault();
+  run(async () => { await api("/items", "POST", { name: $("#name").value, price: Math.round((+$("#price").value || 0) * 100) }); $("#add").reset(); $("#name").focus(); });
+});
+let t; $("#q").addEventListener("input", () => { clearTimeout(t); t = setTimeout(refresh, 250); });
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,81 @@
+# ecosystem | area | proven choices (first = default pick) — versions are deliberately absent: confirm with pkg_info
+js | web framework (full-stack) | next, nuxt, sveltekit, astro, remix / react-router v7, tanstack-start, solid-start, qwik
+js | UI library | react, vue, svelte, solid-js, preact, lit, alpinejs, htmx
+js | build tool / bundler | vite, esbuild, rollup, tsup, turbopack, webpack, parcel, rspack, bun build
+js | runtime / package manager | node, bun, deno, pnpm, npm, yarn, corepack, nvm / fnm / volta
+js | styling | tailwindcss, css modules, vanilla-extract, sass, postcss, unocss, styled-components, emotion, panda-css
+js | component kits | shadcn/ui, radix-ui, headlessui, mantine, chakra-ui, mui, ant design, daisyui, ark-ui, react-aria, primevue, vuetify, naive-ui
+js | icons | lucide, heroicons, phosphor-icons, tabler-icons, react-icons, iconify
+js | state management | zustand, jotai, redux-toolkit, valtio, xstate, pinia (vue), mobx, nanostores, signals
+js | data fetching / cache | @tanstack/react-query, swr, apollo-client, urql, trpc, ky, axios, ofetch
+js | forms & validation | react-hook-form, zod, valibot, yup, formik, vee-validate, @tanstack/react-form, ajv, joi, arktype
+js | routing | react-router, @tanstack/react-router, vue-router, wouter, navigo
+js | tables / grids / virtual lists | @tanstack/react-table, ag-grid, tabulator-tables, @tanstack/react-virtual, react-window, handsontable
+js | charts / dataviz | chart.js, recharts, echarts, d3, visx, plotly.js, apexcharts, uplot, lightweight-charts, nivo, observable plot
+js | animation | motion (framer-motion), gsap, animejs, lottie-web, auto-animate, react-spring, lenis (smooth scroll), view transitions API
+js | 3D / WebGL / WebGPU | three, @react-three/fiber, @react-three/drei, babylonjs, playcanvas, regl, ogl, pixi.js (2D GPU), cannon-es, rapier (physics)
+js | 2D games | phaser, pixi.js, kaplay (kaboom), excalibur, matter-js (physics), howler (audio), melonjs
+js | maps | leaflet, maplibre-gl, mapbox-gl, openlayers, deck.gl, turf (geo maths), react-leaflet
+js | rich text / code editors | tiptap, lexical, prosemirror, slate, quill, codemirror 6, monaco-editor
+js | markdown / content | marked, markdown-it, remark/rehype (unified), mdx, shiki, highlight.js, prismjs, dompurify (always sanitise), katex, mermaid
+js | dates & numbers | date-fns, dayjs, luxon, Temporal (native where available), Intl.* (native), decimal.js, big.js, numeral
+js | utilities | lodash-es, remeda, radash, nanoid, uuid, clsx, tailwind-merge, immer, ms, p-limit, p-queue, debounce
+js | drag & drop / gestures | dnd-kit, sortablejs, react-dnd, @use-gesture/react, interactjs, swiper, embla-carousel
+js | files & documents | pdf-lib, pdfjs-dist, jspdf, exceljs, xlsx (sheetjs), papaparse (CSV), jszip, file-saver, docx, mammoth, sharp (images, node), tesseract.js (OCR)
+js | audio / video / media | tone, howler, wavesurfer.js, video.js, hls.js, ffmpeg.wasm, mediapipe, recordrtc
+js | i18n / RTL | i18next, react-i18next, vue-i18n, formatjs (react-intl), lingui, CSS logical properties, Intl.Segmenter
+js | auth (client+server) | better-auth, auth.js (next-auth), lucia patterns, clerk, supabase auth, passport, jose (JWT), oslo, arctic (OAuth), @node-rs/argon2, bcryptjs
+js | server framework | hono, fastify, express, koa, nestjs, elysia (bun), h3 / nitro, adonisjs
+js | database drivers / ORM | drizzle-orm, prisma, kysely, better-sqlite3, pg (postgres), postgres.js, mysql2, mongoose, mongodb, knex, typeorm, sequelize, mikro-orm, libsql
+js | backend services | redis (ioredis), bullmq (queues), socket.io, ws, nodemailer, resend, stripe, aws-sdk v3, @google-cloud/*, firebase-admin, supabase-js, minio, meilisearch, typesense
+js | realtime | ws, socket.io, sse (native EventSource), partykit, liveblocks, yjs (CRDT), automerge, pusher-js, ably
+js | testing | vitest, jest, playwright, cypress, @testing-library/react, msw (mock API), supertest, node:test, storybook, faker
+js | lint / format / types | typescript, eslint, prettier, biome, oxlint, tsx (run TS), ts-node, zod-to-json-schema, knip (dead code)
+js | CLI tools | commander, yargs, citty, clack/prompts, inquirer, chalk, picocolors, ora, execa, zx, listr2, cac
+js | desktop | electron, electron-builder, electron-forge, tauri, neutralino, wails (go), nw.js
+js | mobile | expo, react-native, react-navigation, nativewind, capacitor, ionic, react-native-reanimated, tamagui
+js | browser extension | wxt, plasmo, crxjs vite plugin, webextension-polyfill, manifest v3
+js | AI / LLM | @anthropic-ai/sdk, openai, ai (vercel ai sdk), @openrouter/ai-sdk-provider, langchain, llamaindex, @modelcontextprotocol/sdk, transformers.js, onnxruntime-web, ollama
+js | scraping / automation | playwright, puppeteer, cheerio, crawlee, jsdom, linkedom, turndown (html→md), readability
+js | monorepo / release | pnpm workspaces, turborepo, nx, changesets, semantic-release, lerna
+js | logging / observability | pino, winston, consola, sentry, opentelemetry, prom-client
+js | storage in browser | idb-keyval, dexie (IndexedDB), localforage, OPFS (native), pglite, sql.js, sqlite-wasm
+js | CMS / content backends | payload, strapi, sanity, directus, contentlayer, keystatic, tinacms, ghost
+js | payments / commerce | stripe, lemonsqueezy, paddle, medusa, shopify hydrogen, paypal sdk
+py | web framework | fastapi, django, flask, litestar, starlette, aiohttp, sanic, django-rest-framework, django-ninja
+py | server / deploy | uvicorn, gunicorn, hypercorn, granian, celery, dramatiq, rq, arq, apscheduler
+py | env / packaging | uv, pip + venv, poetry, pdm, hatch, pipx, pyproject.toml, ruff, black, mypy, pyright
+py | data / validation | pydantic, pydantic-settings, attrs, msgspec, marshmallow, python-dotenv
+py | database | sqlalchemy 2, sqlmodel, alembic (migrations), psycopg 3, asyncpg, sqlite3 (stdlib), redis-py, pymongo, motor, peewee, tortoise-orm, duckdb
+py | http / scraping | httpx, requests, aiohttp, beautifulsoup4, lxml, selectolax, scrapy, playwright, selenium
+py | data science | numpy, pandas, polars, scipy, scikit-learn, statsmodels, pyarrow, dask, xarray, numba
+py | plotting | matplotlib, seaborn, plotly, altair, bokeh, streamlit, gradio, dash, panel
+py | deep learning / AI | torch, transformers, diffusers, datasets, accelerate, peft, tensorflow, keras, jax, onnxruntime, sentence-transformers, faiss, chromadb, lancedb, anthropic, openai, langchain, llama-index, instructor, mcp
+py | computer vision / media | opencv-python, pillow, scikit-image, ultralytics (YOLO), mediapipe, moviepy, ffmpeg-python, pydub, librosa, whisper / faster-whisper
+py | CLI / TUI | typer, click, argparse (stdlib), rich, textual, tqdm, questionary
+py | testing | pytest, pytest-asyncio, pytest-cov, hypothesis, tox / nox, respx, factory-boy, freezegun, playwright
+py | desktop GUI | pyside6 / pyqt6, tkinter (stdlib), customtkinter, flet, dearpygui, kivy, pywebview, pyinstaller / nuitka (packaging)
+py | games | pygame-ce, arcade, pyglet, panda3d, ursina
+py | documents / files | openpyxl, python-docx, python-pptx, pypdf, pdfplumber, reportlab, weasyprint, pymupdf, xlsxwriter, pyyaml, tomllib (stdlib), orjson
+py | automation / system | pathlib (stdlib), subprocess (stdlib), psutil, watchdog, schedule, paramiko, fabric, boto3, docker, pyautogui
+py | auth / security | pyjwt, authlib, passlib / argon2-cffi, cryptography, itsdangerous, fastapi-users, django-allauth
+rust | web | axum, actix-web, rocket, warp, tower, hyper, leptos, yew, dioxus, tauri
+rust | async / core | tokio, futures, rayon, crossbeam, anyhow, thiserror, serde, serde_json, tracing, clap, itertools, once_cell, chrono / time, uuid, regex
+rust | data / db | sqlx, diesel, sea-orm, rusqlite, redis, reqwest, tonic (gRPC), prost
+rust | games / graphics | bevy, macroquad, ggez, wgpu, winit, egui, iced, slint, rapier, nalgebra, glam
+go | web | net/http (stdlib), chi, gin, echo, fiber, gorilla/websocket, connect / grpc-go, templ, htmx
+go | data / tooling | database/sql, pgx, sqlc, gorm, ent, go-redis, cobra, viper, zap / slog (stdlib), testify, golangci-lint, air (live reload), wails, bubbletea (TUI), ebiten (games)
+csharp | web / app | ASP.NET Core (minimal APIs), Blazor, EF Core, Dapper, MediatR, FluentValidation, Serilog, xUnit, NUnit, Polly, SignalR, MAUI, WPF, WinUI 3, Avalonia, Silk.NET, MonoGame, Unity, Godot C#
+java/kotlin | web / app | Spring Boot, Quarkus, Micronaut, Ktor, Hibernate / JPA, jOOQ, Exposed, Gradle, Maven, JUnit 5, Mockito, Jetpack Compose, Android SDK, Retrofit, OkHttp, Room, Koin / Hilt, kotlinx.coroutines, libGDX
+php | web | laravel, symfony, livewire, inertia, filament, eloquent, composer, pest / phpunit, slim, wordpress
+ruby | web | rails, sinatra, hotwire (turbo, stimulus), sidekiq, rspec, devise, puma
+dart | mobile / app | flutter, riverpod, bloc, go_router, dio, freezed, drift, hive / isar, flame (games), firebase packages
+swift | apple platforms | SwiftUI, UIKit, Combine, SwiftData / Core Data, async-await, Vapor (server), SPM, XCTest, SpriteKit, RealityKit
+c/c++ | native | cmake, vcpkg, conan, fmt, spdlog, nlohmann/json, boost, catch2 / googletest, SDL3, raylib, SFML, GLFW, Dear ImGui, Qt, glm, EnTT, asio, OpenCV, Eigen
+lua/luau | games / scripting | love2d, roblox luau (rojo, wally, roact/fusion), defold, neovim API
+database | engines | postgresql, sqlite, mysql / mariadb, mongodb, redis / valkey, duckdb, clickhouse, elasticsearch / opensearch, cassandra, neo4j, pgvector, qdrant, weaviate, supabase, turso, neon, planetscale, cockroachdb
+devops | containers / infra | docker, docker compose, kubernetes, helm, terraform / opentofu, pulumi, ansible, nginx, caddy, traefik, github actions, gitlab ci
+devops | hosting | vercel, netlify, cloudflare (workers, pages, d1, r2, kv), fly.io, railway, render, aws (lambda, ecs, s3, rds), gcp (cloud run), azure, hetzner, digitalocean, hugging face spaces
+devops | monitoring | sentry, grafana, prometheus, loki, opentelemetry, uptime-kuma, posthog, plausible
+tools | CLI everyone uses | git, gh (GitHub CLI), ripgrep (rg), fd, jq, curl, httpie, make / just / task, ffmpeg, imagemagick, pandoc, sqlite3, psql, openssl, ssh, rsync, tar / 7z
+web platform | native APIs worth using before a library | fetch, AbortController, URL / URLSearchParams, FormData, structuredClone, Intl, crypto.subtle, IndexedDB, Web Workers, WebSocket, EventSource, WebRTC, Web Audio, Canvas 2D, WebGL2 / WebGPU, IntersectionObserver, ResizeObserver, dialog, popover, CSS grid / container queries / :has() / nesting, View Transitions, File System Access, Service Worker / PWA, Web Share, Clipboard, Notifications, Geolocation, WebAuthn (passkeys)

@@ -1,0 +1,58 @@
+[
+  {
+    "name": "voxel-game",
+    "title": "Minecraft-like 3D voxel game in the browser (three.js): infinite chunked terrain with trees, walking/jumping/flying physics, break and place blocks, hotbar",
+    "tags": "minecraft voxel block blocks 3d game three.js sandbox world craft mine cube ماينكرافت ماين كرافت مكعبات لعبه العاب ثلاثيه ابعاد عالم مفتوح بناء تعدين متصفح",
+    "run": "serve_static (it is an ES module, so it must be served over http — opening the file directly will not work). Entry: index.html",
+    "notes": "game.js sections: config (CHUNK, VIEW, BLOCKS, HOTBAR) · world (generate, getBlock, setBlock) · meshing · player physics · picking · input · loop. To add a block: append to BLOCKS and its id to HOTBAR. Terrain shape: heightAt(). Structures: inside generate() (keep them 2 blocks inside the chunk). Saving: record setBlock edits in a Map and replay them after generate(). Debug handle: window.game (player, chunks, getBlock, setBlock). Verify with preview_read js: game.chunks.size > 0 && game.player.onGround.",
+    "strong": "minecraft voxel ماينكرافت ماين كرافت مكعبات"
+  },
+  {
+    "name": "platformer-2d",
+    "title": "2D pixel platformer on canvas (no libraries): tile levels as text, coins, spikes, enemies, flag, coyote time and jump buffering, camera follow",
+    "tags": "platformer 2d game canvas mario jump run arcade pixel side scroller tiles level لعبه العاب منصات ماريو قفز ثنائيه ابعاد بكسل كانفاس متصفح",
+    "run": "serve_static, or open_preview index.html directly (single file, no modules)",
+    "notes": "Everything is in index.html. Levels are text rows in LEVELS (# solid, o coin, ^ spike, F flag, P start, E enemy) — all rows of a level must have the same length. Feel constants at the top: GRAV, MOVE, JUMP, COYOTE, BUFFER. update() = physics and rules, draw() = rendering. Debug handle: window.game (player, coins, state, load(n)).",
+    "strong": "platformer mario منصات ماريو"
+  },
+  {
+    "name": "landing-page",
+    "title": "Arabic RTL landing page (HTML + CSS, no build): sticky nav, hero, features, steps, pricing, FAQ, contact form, light/dark, responsive, accessible",
+    "tags": "landing page website site marketing product startup company portfolio business rtl arabic html css صفحه هبوط موقع تعريفي شركه منتج متجر تسويق عربي واجهه مطعم مقهي خدمات",
+    "run": "serve_static, or open_preview index.html",
+    "notes": "Rebrand through the CSS variables at the top of style.css (--brand, fonts). Replace every placeholder text in index.html with real copy for the user's product; remove sections that do not apply. For an English page set <html lang=\"en\" dir=\"ltr\"> — the CSS uses logical properties so nothing else changes. The form only validates client-side; wire it to a real endpoint if asked.",
+    "strong": "landing هبوط تعريفي"
+  },
+  {
+    "name": "web-app",
+    "title": "Single-page CRUD app (vanilla JS, Arabic RTL): add/edit/delete/complete, search, filters, priorities, undo, dark mode, localStorage — the base for any todo/notes/tracker/list tool",
+    "tags": "todo tasks notes app crud list tracker manager habit expense vanilla localstorage تطبيق مهام ملاحظات قائمه متتبع مصاريف عادات اداره تنظيم",
+    "run": "serve_static, or open_preview index.html (single file)",
+    "notes": "One state object + render(); persistence is the `db` object (swap for fetch calls to add a backend). To change the entity, rename fields in the add handler and render(). Debug handle: window.app.state.",
+    "strong": "todo مهام ملاحظات notes"
+  },
+  {
+    "name": "store",
+    "title": "Online store front (vanilla JS, Arabic RTL): product grid, search, category chips, sort, cart drawer with quantities persisted in localStorage, checkout dialog with validation",
+    "tags": "store shop ecommerce e-commerce cart products checkout catalog menu متجر الكتروني منتجات سله شراء بيع تسوق كتالوج قائمه طعام منيو",
+    "run": "serve_static, or open_preview index.html (single file)",
+    "notes": "Edit the PRODUCTS array (price in the smallest currency unit, emoji+color stand in for photos — replace thumb with <img> when real images exist). Currency/locale: money(). Checkout only collects the order; send it to a server in the order submit handler; payments must use a provider. Debug handle: window.shop (state, add(id, qty)).",
+    "strong": "store shop ecommerce متجر سله تسوق"
+  },
+  {
+    "name": "dashboard",
+    "title": "Admin dashboard (Chart.js from CDN, Arabic RTL): sidebar, KPI cards with change vs previous period, line + doughnut charts, sortable/searchable/paginated table, date range, dark mode, CSV export",
+    "tags": "dashboard admin analytics charts statistics reports kpi panel table لوحه تحكم احصائيات تحليلات تقارير رسوم بيانيه مخططات اداره مبيعات",
+    "run": "serve_static, or open_preview index.html (single file; needs internet for the Chart.js CDN)",
+    "notes": "Replace loadData() with real data in the same shape ({id, customer, channel, status, amount, date}); compute() derives KPIs and chart series; COLS defines the table. Debug handle: window.dash (state, compute()).",
+    "strong": "dashboard داشبورد احصائيات analytics"
+  },
+  {
+    "name": "api-node",
+    "title": "REST API with SQLite and a small front-end, zero dependencies (Node 22.13+ built-in node:sqlite): CRUD with validation, pagination, search, uniform JSON errors, static file serving",
+    "tags": "api rest backend server node sqlite database crud http endpoint json خادم سيرفر واجهه برمجيه قاعده بيانات باك اند اداره نظام تخزين",
+    "run": "start_server with command \"node server.js\" and port 3000 (no npm install needed). Front-end is public/index.html served by the same server.",
+    "notes": "Add a resource: create its table in db.exec, write a validate function, copy the five \"items\" routes. Test with web_fetch http://localhost:3000/api/items or run_command curl. data.db is created next to server.js — add it to .gitignore.",
+    "strong": "api rest سيرفر خادم backend"
+  }
+]

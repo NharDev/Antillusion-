@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pixel Run</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #10131c; display: grid; place-items: center; font-family: system-ui, sans-serif; color: #fff; overflow: hidden; }
+  canvas { width: min(100vw, 177.78vh); height: min(56.25vw, 100vh); image-rendering: pixelated; background: #1b2238; }
+  #ui { position: fixed; top: 10px; left: 14px; font: 600 15px ui-monospace, Consolas, monospace; text-shadow: 0 2px 0 #000; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; background: #000a; font-size: 18px; line-height: 1.9; }
+  #msg[hidden] { display: none; }
+  #msg h1 { margin: 0; font-size: 46px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="480" height="270"></canvas>
+<div id="ui"></div>
+<div id="msg"><div><h1>Pixel Run</h1>← → / A D move · Space / ↑ jump<br>Collect every coin, reach the flag. Press any key.</div></div>
+<script>
+// Tile platformer: fixed-timestep physics, axis-separated tile collision, coyote time + jump buffering, camera follow.
+// Level legend: # solid · o coin · ^ spike · F flag · P player start · E enemy (walks between walls)
+const LEVELS = [[
+  "                                                            ",
+  "                                                            ",
+  "                         o o o                              ",
+  "                        #######            o                ",
+  "              o                           ###          F    ",
+  "             ###     E                         o      ###   ",
+  "   P                ####        ##            ###           ",
+  "  ###    o                 o          E                     ",
+  "        ###        ^^     ###      #######    ^^^       o   ",
+  "############################    #############################",
+  "############################    #############################",
+], [
+  "                                                            ",
+  "                 o                                      F   ",
+  "                ###        o   o                       ###  ",
+  "                          #######       o                   ",
+  "   P       o                           ###    E             ",
+  "  ###     ###    E                 o         ####      o    ",
+  "               #####      ^       ###                 ###   ",
+  "      ^                 ####                ^^              ",
+  "#########    ########          ####   ############    ######",
+  "#########    ########          ####   ############    ######",
+]];
+const T = 16, GRAV = 900, MOVE = 110, JUMP = 290, COYOTE = 0.09, BUFFER = 0.1;
+const cv = document.getElementById("c"), g = cv.getContext("2d"), ui = document.getElementById("ui"), msg = document.getElementById("msg");
+const keys = {}; let level = 0, map, coins, enemies, player, cam = 0, total = 0, state = "title", deaths = 0;
+
+function load(n) {
+  level = n; map = LEVELS[n].map((r) => r.split("")); coins = []; enemies = [];
+  map.forEach((row, y) => row.forEach((ch, x) => {
+    if (ch === "P") { player = { x: x * T, y: y * T, w: 10, h: 14, vx: 0, vy: 0, ground: false, coyote: 0, buffer: 0, face: 1 }; row[x] = " "; }
+    if (ch === "o") { coins.push({ x: x * T + 4, y: y * T + 4, w: 8, h: 8 }); row[x] = " "; }
+    if (ch === "E") { enemies.push({ x: x * T, y: y * T + 2, w: 14, h: 14, vx: 40 }); row[x] = " "; }
+  }));
+  total = coins.length;
+}
+const tile = (x, y) => (map[y] && map[y][x]) || " ";
+const solid = (x, y) => tile(Math.floor(x / T), Math.floor(y / T)) === "#";
+const hits = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+function boxSolid(o) { return solid(o.x, o.y) || solid(o.x + o.w - 0.01, o.y) || solid(o.x, o.y + o.h - 0.01) || solid(o.x + o.w - 0.01, o.y + o.h - 0.01) || solid(o.x, o.y + o.h / 2) || solid(o.x + o.w - 0.01, o.y + o.h / 2); }
+function touching(o, ch) { for (let x = Math.floor(o.x / T); x <= Math.floor((o.x + o.w - 0.01) / T); x++) for (let y = Math.floor(o.y / T); y <= Math.floor((o.y + o.h - 0.01) / T); y++) if (tile(x, y) === ch) return true; return false; }
+
+function update(dt) {
+  const p = player, dir = (keys.ArrowRight || keys.KeyD ? 1 : 0) - (keys.ArrowLeft || keys.KeyA ? 1 : 0);
+  p.vx = dir * MOVE; if (dir) p.face = dir;
+  p.coyote = p.ground ? COYOTE : p.coyote - dt; p.buffer -= dt;
+  if (p.buffer > 0 && p.coyote > 0) { p.vy = -JUMP; p.buffer = 0; p.coyote = 0; }
+  if (!(keys.Space || keys.ArrowUp || keys.KeyW) && p.vy < -90) p.vy = -90;        // short hop when the key is released
+  p.vy = Math.min(p.vy + GRAV * dt, 420);
+  p.x += p.vx * dt; if (boxSolid(p)) { p.x = p.vx > 0 ? Math.floor((p.x + p.w) / T) * T - p.w : Math.ceil(p.x / T) * T; p.vx = 0; }
+  p.y += p.vy * dt; p.ground = false;
+  if (boxSolid(p)) { if (p.vy > 0) { p.y = Math.floor((p.y + p.h) / T) * T - p.h; p.ground = true; } else p.y = Math.ceil(p.y / T) * T; p.vy = 0; }
+  for (const e of enemies) {
+    e.x += e.vx * dt;
+    const ahead = e.vx > 0 ? e.x + e.w : e.x;
+    if (solid(ahead, e.y + 4) || !solid(ahead, e.y + e.h + 2)) e.vx *= -1;             // turn at walls and ledges
+    if (hits(p, e)) { if (p.vy > 60 && p.y + p.h - e.y < 9) { e.dead = true; p.vy = -200; } else return die(); }
+  }
+  enemies = enemies.filter((e) => !e.dead);
+  coins = coins.filter((c) => !hits(p, c));
+  if (touching(p, "^") || p.y > map.length * T + 40) return die();
+  if (touching(p, "F") && !coins.length) { if (level + 1 < LEVELS.length) load(level + 1); else { state = "won"; show(`<h1>You win!</h1>Deaths: ${deaths}<br>Press any key to play again.`); } }
+  cam += (Math.max(0, Math.min(p.x - cv.width / 2, map[0].length * T - cv.width)) - cam) * Math.min(1, dt * 8);
+}
+function die() { deaths++; load(level); }
+function show(html) { msg.firstElementChild.innerHTML = html; msg.hidden = false; }
+
+function draw(t) {
+  g.fillStyle = "#1b2238"; g.fillRect(0, 0, cv.width, cv.height);
+  g.save(); g.translate(-Math.round(cam), cv.height - map.length * T);
+  map.forEach((row, y) => row.forEach((ch, x) => {
+    if (ch === "#") { g.fillStyle = tile(x, y - 1) === "#" ? "#4a3b63" : "#6dbb5a"; g.fillRect(x * T, y * T, T, T); g.fillStyle = "#0002"; g.fillRect(x * T, y * T + T - 3, T, 3); }
+    if (ch === "^") { g.fillStyle = "#e8e8f0"; for (let i = 0; i < 2; i++) { g.beginPath(); g.moveTo(x * T + i * 8, y * T + T); g.lineTo(x * T + i * 8 + 4, y * T + 5); g.lineTo(x * T + i * 8 + 8, y * T + T); g.fill(); } }
+    if (ch === "F") { g.fillStyle = "#ddd"; g.fillRect(x * T + 3, y * T - T, 2, T * 2); g.fillStyle = coins.length ? "#777" : "#ffd23f"; g.fillRect(x * T + 5, y * T - T, 10, 8); }
+  }));
+  g.fillStyle = "#ffd23f"; for (const c of coins) g.fillRect(c.x + Math.abs(Math.sin(t / 250 + c.x)) * 3, c.y, 8 - Math.abs(Math.sin(t / 250 + c.x)) * 6, 8);
+  g.fillStyle = "#e5484d"; for (const e of enemies) { g.fillRect(e.x, e.y, e.w, e.h); g.fillStyle = "#fff"; g.fillRect(e.x + (e.vx > 0 ? 9 : 2), e.y + 3, 3, 3); g.fillStyle = "#e5484d"; }
+  const p = player; g.fillStyle = "#4cc2ff"; g.fillRect(Math.round(p.x), Math.round(p.y), p.w, p.h); g.fillStyle = "#06283d"; g.fillRect(Math.round(p.x) + (p.face > 0 ? 6 : 1), Math.round(p.y) + 3, 3, 3);
+  g.restore();
+  ui.textContent = `Level ${level + 1}/${LEVELS.length}   Coins ${total - coins.length}/${total}   Deaths ${deaths}`;
+}
+
+addEventListener("keydown", (e) => {
+  if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+  if (state !== "play") { if (state === "won") { deaths = 0; load(0); } state = "play"; msg.hidden = true; return; }
+  if ((e.code === "Space" || e.code === "ArrowUp" || e.code === "KeyW") && !keys[e.code]) player.buffer = BUFFER;
+  keys[e.code] = true;
+});
+addEventListener("keyup", (e) => { keys[e.code] = false; });
+
+load(0);
+let last = performance.now(), acc = 0; const STEP = 1 / 120;
+function frame(now) {
+  acc += Math.min((now - last) / 1000, 0.1); last = now;
+  while (acc >= STEP) { if (state === "play") update(STEP); acc -= STEP; }
+  draw(now); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+window.game = { get player() { return player; }, get coins() { return coins; }, get state() { return state; }, load };
+</script>
+</body>
+</html>

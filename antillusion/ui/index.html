@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="ar" dir="ltr" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Antillusion</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="splash"><svg class="mark" viewBox="0 0 24 24" width="40" height="40"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 3a9 9 0 010 18z" fill="currentColor"/></svg><div class="dots"><i></i><i></i><i></i></div><span>Loading Antillusion</span></div>
+
+<header id="titlebar">
+  <button id="btnSide" class="tb-btn" title="الشريط الجانبي"></button>
+  <button id="btnBack" class="tb-btn" title="المحادثة السابقة"></button>
+  <button id="btnFwd" class="tb-btn" title="المحادثة التالية"></button>
+  <div id="tabs"></div>
+  <div class="tb-actions">
+    <button id="btnTheme" class="tb-btn" title="تبديل السِّمة: داكنة / فاتحة"></button>
+    <button id="btnUsage" class="tb-btn" title="الاستخدام"></button>
+    <button id="btnLibrary" class="tb-btn" title="المكتبة الهندسية"></button>
+    <button id="btnPanel" class="tb-btn" title="لوحة الاستعراض (Ctrl+B)"></button>
+  </div>
+</header>
+
+<div id="main">
+  <nav id="sidebar">
+    <button id="btnNew" class="nav-btn primary"></button>
+    <button id="btnHistory" class="nav-btn"></button>
+    <button id="btnTasks" class="nav-btn"></button>
+    <div class="side-h projects-h"><span>Projects</span><button id="btnNewProject" class="mini" title="محادثة في مجلد مشروع آخر…"></button></div>
+    <div id="sessions"></div>
+    <div id="servers"></div>
+    <button id="btnSettings" class="nav-btn"></button>
+  </nav>
+
+  <section id="chat">
+    <div id="chatHead"></div>
+    <div id="msgs"></div>
+    <div id="composerWrap">
+      <div id="heroTop"></div>
+      <div id="planBar" hidden></div>
+      <div id="todos" hidden></div>
+      <div id="composer">
+        <div id="atts"></div>
+        <div id="mention" hidden></div>
+        <textarea id="input" rows="1" dir="auto" placeholder="Ask anything, @ to mention, / for actions" title="Enter للإرسال · Shift+Enter لسطر جديد · /plan /code /ask /compact /clear"></textarea>
+        <div class="crow">
+          <button id="btnAttach" class="ic-btn" title="إرفاق ملفات أو صور"></button>
+          <button id="btnModel" class="chip-btn"></button>
+          <button id="btnEffort" class="chip-btn"></button>
+          <div id="modeSeg" class="seg"></div>
+          <button id="btnPerm" class="chip-btn"></button>
+          <span class="grow"></span>
+          <button id="btnCtx" class="ctx-btn" title="نافذة السياق"></button>
+          <button id="btnSend" class="send-btn"></button>
+        </div>
+      </div>
+      <div id="underBar"></div>
+      <div id="heroBottom"></div>
+    </div>
+  </section>
+
+  <div id="splitter" hidden></div>
+
+  <aside id="panel" hidden>
+    <div id="ptabs"></div>
+    <div id="pbar"></div>
+    <div id="pviews"></div>
+  </aside>
+</div>
+
+<div id="layer"></div>
+<script src="md.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

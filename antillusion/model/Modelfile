@@ -1,0 +1,7 @@
+# Local trial on your own PC with Ollama (fits an 8 GB GPU). Build it once:
+#   ollama pull qwen2.5-coder:7b
+#   ollama create antillusion-coder -f Modelfile
+# The default Ollama context (a few thousand tokens) is smaller than the agent's instructions, so it must be raised here.
+FROM qwen2.5-coder:7b
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.2

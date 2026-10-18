@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>اسم المنتج — جملة تعريفية قصيرة</title>
+<meta name="description" content="وصف من سطر واحد يظهر في نتائج البحث وعند المشاركة.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="nav">
+  <a class="logo" href="#top">اسم المنتج</a>
+  <nav aria-label="الرئيسية">
+    <a href="#features">المزايا</a><a href="#how">كيف يعمل</a><a href="#pricing">الأسعار</a><a href="#faq">أسئلة شائعة</a>
+  </nav>
+  <a class="btn small" href="#contact">ابدأ الآن</a>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <p class="eyebrow">جديد · الإصدار الأول</p>
+    <h1>عنوان واضح يقول ما الذي يكسبه العميل</h1>
+    <p class="lead">جملة أو جملتان تشرحان المنتج بلغة الفائدة: ماذا يفعل، ولمن، ولماذا هو أفضل من البديل.</p>
+    <div class="actions"><a class="btn" href="#contact">جرّبه مجاناً</a><a class="btn ghost" href="#how">شاهد كيف يعمل</a></div>
+    <ul class="proof"><li><b>+١٢٬٠٠٠</b> مستخدم</li><li><b>٤٫٩/٥</b> تقييم</li><li><b>٩٩٫٩٪</b> جاهزية</li></ul>
+  </section>
+
+  <section id="features" class="section">
+    <h2>كل ما تحتاجه في مكان واحد</h2>
+    <div class="grid three">
+      <article class="card"><span class="ic">◆</span><h3>ميزة أولى</h3><p>وصف قصير يربط الميزة بنتيجة يلمسها العميل.</p></article>
+      <article class="card"><span class="ic">●</span><h3>ميزة ثانية</h3><p>وصف قصير يربط الميزة بنتيجة يلمسها العميل.</p></article>
+      <article class="card"><span class="ic">▲</span><h3>ميزة ثالثة</h3><p>وصف قصير يربط الميزة بنتيجة يلمسها العميل.</p></article>
+    </div>
+  </section>
+
+  <section id="how" class="section alt">
+    <h2>ثلاث خطوات فقط</h2>
+    <ol class="steps">
+      <li><h3>سجّل</h3><p>أنشئ حسابك في أقل من دقيقة.</p></li>
+      <li><h3>جهّز</h3><p>أضف بياناتك واختر ما يناسبك.</p></li>
+      <li><h3>انطلق</h3><p>ابدأ العمل وشاهد النتائج فوراً.</p></li>
+    </ol>
+  </section>
+
+  <section id="pricing" class="section">
+    <h2>أسعار بسيطة</h2>
+    <div class="grid three">
+      <article class="card plan"><h3>أساسي</h3><p class="price">٠ <small>ر.س / شهرياً</small></p><ul><li>ميزة واحدة</li><li>دعم بالبريد</li></ul><a class="btn ghost" href="#contact">ابدأ</a></article>
+      <article class="card plan best"><span class="tag">الأكثر طلباً</span><h3>احترافي</h3><p class="price">٤٩ <small>ر.س / شهرياً</small></p><ul><li>كل المزايا</li><li>دعم فوري</li><li>تقارير</li></ul><a class="btn" href="#contact">اشترك</a></article>
+      <article class="card plan"><h3>شركات</h3><p class="price">تواصل معنا</p><ul><li>حسابات غير محدودة</li><li>مدير حساب</li></ul><a class="btn ghost" href="#contact">تحدّث معنا</a></article>
+    </div>
+  </section>
+
+  <section id="faq" class="section alt narrow">
+    <h2>أسئلة شائعة</h2>
+    <details><summary>هل توجد فترة تجريبية؟</summary><p>نعم، ١٤ يوماً بلا بطاقة ائتمان.</p></details>
+    <details><summary>هل أستطيع الإلغاء في أي وقت؟</summary><p>نعم، بضغطة واحدة من الإعدادات.</p></details>
+    <details><summary>هل بياناتي آمنة؟</summary><p>بياناتك مشفّرة ولا نشاركها مع أي طرف.</p></details>
+  </section>
+
+  <section id="contact" class="section narrow">
+    <h2>جاهز للبدء؟</h2>
+    <form class="form" id="form" novalidate>
+      <label>الاسم<input name="name" required autocomplete="name"></label>
+      <label>البريد الإلكتروني<input name="email" type="email" required autocomplete="email" dir="ltr"></label>
+      <label>رسالتك<textarea name="message" rows="4"></textarea></label>
+      <button class="btn" type="submit">إرسال</button>
+      <p class="form-note" id="note" role="status"></p>
+    </form>
+  </section>
+</main>
+
+<footer class="footer"><span>© <span id="year"></span> اسم المنتج</span><a href="#top">إلى الأعلى ↑</a></footer>
+
+<script>
+  document.getElementById("year").textContent = new Date().getFullYear();
+  // Replace with a real endpoint (fetch POST) — here the form only validates and confirms.
+  document.getElementById("form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const f = e.target, note = document.getElementById("note");
+    if (!f.checkValidity()) { note.textContent = "يرجى تعبئة الاسم وبريد إلكتروني صحيح."; note.className = "form-note bad"; return; }
+    note.textContent = "وصلتنا رسالتك، سنتواصل معك قريباً."; note.className = "form-note ok"; f.reset();
+  });
+  // reveal sections on scroll
+  const io = new IntersectionObserver((es) => es.forEach((x) => x.isIntersecting && x.target.classList.add("in")), { threshold: 0.12 });
+  document.querySelectorAll(".section, .hero").forEach((el) => io.observe(el));
+</script>
+</body>
+</html>
