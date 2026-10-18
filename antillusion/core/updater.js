@@ -32,6 +32,14 @@ function createUpdater({ appDir, git, npm, repo = REPO, fetchImpl = globalThis.f
   async function check(branchPref) {
     const base = await info(), checkedAt = Date.now();
     if (base.mode === "release") {
+      let info = {}; try { info = JSON.parse(fs.readFileSync(path.join(appDir, "build-info.json"), "utf8")); } catch {}
+      if (info.channel === "dev") {   // dev builds are published under one rolling "dev-build" prerelease whose body names the commit
+        const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/tags/dev-build`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(10000) });
+        if (res.status === 404) return { ...base, checkedAt, channel: "dev", head: String(info.commit || "").slice(0, 7), available: false, note: "لا يوجد بناء تجريبي منشور بعد" };
+        if (!res.ok) throw new Error("GitHub API: HTTP " + res.status);
+        const j = await res.json(), sha = ((String(j.body || "").match(/commit:\s*([0-9a-f]{40})/i) || [])[1] || "").toLowerCase(), asset = (j.assets || []).find((a) => /setup.*\.exe$/i.test(a.name));
+        return { ...base, checkedAt, channel: "dev", head: String(info.commit || "").slice(0, 7), latest: sha.slice(0, 7), available: !!(sha && info.commit && sha !== String(info.commit).toLowerCase() && asset), url: asset ? asset.browser_download_url : null, page: j.html_url, notes: String(j.body || "").replace(/commit:\s*[0-9a-f]{40}/i, "").trim().slice(0, 1500) };
+      }
       const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/latest`, { headers: { Accept: "application/vnd.github+json", "User-Agent": "Antillusion" }, signal: AbortSignal.timeout(10000) });
       if (res.status === 404) return { ...base, checkedAt, available: false, note: "لا توجد إصدارات منشورة على GitHub بعد" };
       if (!res.ok) throw new Error("GitHub API: HTTP " + res.status);

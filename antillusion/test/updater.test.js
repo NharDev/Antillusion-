@@ -50,5 +50,11 @@ sh(tmp, "clone", "-q", "-b", "main", origin, b);
     fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({ tag_name: "v1.2.0", html_url: "https://x/r", body: "notes", assets: [{ name: "Antillusion-Setup.exe", browser_download_url: "https://x/s.exe" }] }) }) });
   const rs = await rel.check();
   assert.strictEqual(rs.mode, "release"); assert.strictEqual(rs.available, true); assert.strictEqual(rs.url, "https://x/s.exe");
+  // dev channel: compares the commit recorded in build-info.json with the one named in the dev-build prerelease
+  fs.writeFileSync(path.join(plain, "build-info.json"), JSON.stringify({ channel: "dev", commit: "a".repeat(40) }));
+  const devApi = (sha) => async () => ({ ok: true, status: 200, json: async () => ({ body: "Rolling build\ncommit: " + sha, html_url: "https://x/dev", assets: [{ name: "Antillusion-Setup.exe", browser_download_url: "https://x/dev.exe" }] }) });
+  const mk = (sha) => createUpdater({ appDir: plain, git: async () => ({ ok: false, out: "", err: "" }), npm: async () => ({ ok: true }), fetchImpl: devApi(sha) });
+  assert.strictEqual((await mk("b".repeat(40)).check()).available, true);
+  assert.strictEqual((await mk("a".repeat(40)).check()).available, false);
   console.log("PASS updater");
 })().catch((e) => { console.error(e); process.exit(1); });

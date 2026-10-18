@@ -22,6 +22,9 @@ const step = (s) => console.log("\n== " + s);
   if (process.env.CI && fs.existsSync(path.join(app, "icon.ico"))) console.log("CI: using the committed icon.ico");
   else run(electron, [path.join(__dirname, "make-icon.js")], { env: Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "ELECTRON_RUN_AS_NODE")) });
 
+  // tells the installed app which channel/commit it is, so the in-app updater knows what "newer" means
+  fs.writeFileSync(path.join(app, "build-info.json"), JSON.stringify({ channel: process.env.BUILD_CHANNEL || "stable", commit: process.env.GITHUB_SHA || "", builtAt: new Date().toISOString() }));
+
   step(`package (Electron ${version})`);
   const { packager } = await import(require("url").pathToFileURL(path.join(tools, "@electron", "packager", "dist", "index.js")).href);   // ESM-only package
   await packager({
@@ -32,18 +35,18 @@ const step = (s) => console.log("\n== " + s);
 
   step("zip");
   fs.mkdirSync(setupDir, { recursive: true });
-  const zip = path.join(setupDir, "app.zip");
+  const zip = path.join(setupDir, "Antillusion-app-win-x64.zip");   // the payload the tiny Setup.exe downloads
   fs.rmSync(zip, { force: true });
   const sys32 = path.join(process.env.SystemRoot || "C:\\Windows", "System32");   // Windows' own bsdtar: the Git one cannot write zip
   run(path.join(sys32, "tar.exe"), ["-a", "-cf", zip, "-C", packed, "."]);
-  for (const f of ["install.cmd", "setup.ps1"]) fs.copyFileSync(path.join(app, "installer", f), path.join(setupDir, f));
+  fs.copyFileSync(path.join(app, "installer", "setup.ps1"), path.join(setupDir, "setup.ps1"));
 
-  step("installer (IExpress)");
+  step("installer (IExpress) — a tiny bootstrapper: only setup.ps1 inside");
   const exe = path.join(setupDir, "Antillusion-Setup.exe"), sed = path.join(setupDir, "setup.sed");
   fs.rmSync(exe, { force: true });
   fs.writeFileSync(sed, ["[Version]", "Class=IEXPRESS", "SEDVersion=3", "[Options]", "PackagePurpose=InstallApp", "ShowInstallProgramWindow=1", "HideExtractAnimation=0", "UseLongFileName=1", "InsideCompressed=0", "CAB_FixedSize=0",
-    "CAB_ResvCodeSigning=0", "RebootMode=N", "InstallPrompt=", "DisplayLicense=", "FinishMessage=", `TargetName=${exe}`, "FriendlyName=Antillusion Setup", "AppLaunched=cmd /c .\\install.cmd", "PostInstallCmd=<None>",
-    "AdminQuietInstCmd=", "UserQuietInstCmd=", "SourceFiles=SourceFiles", "[Strings]", 'FILE0="app.zip"', 'FILE1="install.cmd"', 'FILE2="setup.ps1"', "[SourceFiles]", `SourceFiles0=${setupDir}\\`, "[SourceFiles0]", "%FILE0%=", "%FILE1%=", "%FILE2%=", ""].join("\r\n"));
+    "CAB_ResvCodeSigning=0", "RebootMode=N", "InstallPrompt=", "DisplayLicense=", "FinishMessage=", `TargetName=${exe}`, "FriendlyName=Antillusion Setup", "AppLaunched=powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File setup.ps1", "PostInstallCmd=<None>",
+    "AdminQuietInstCmd=", "UserQuietInstCmd=", "SourceFiles=SourceFiles", "[Strings]", 'FILE0="setup.ps1"', "[SourceFiles]", `SourceFiles0=${setupDir}\\`, "[SourceFiles0]", "%FILE0%=", ""].join("\r\n"));
   // a relative .sed run from its own folder: IExpress fails on an absolute path that contains spaces
   try { run(path.join(sys32, "iexpress.exe"), ["/N", "/Q", "setup.sed"], { cwd: setupDir }); } catch (e) { console.log("iexpress exit status", e.status, "— checking for the output file"); }
   for (let i = 0; i < 120 && !fs.existsSync(exe); i++) await new Promise((r) => setTimeout(r, 1000));   // iexpress returns before the file is closed

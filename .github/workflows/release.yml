@@ -1,6 +1,6 @@
 name: Build installer
-# Every push to a claude/** branch and every manual run builds Antillusion-Setup.exe as a downloadable artifact.
-# Pushing a tag like v1.1.0 also publishes it as a GitHub release, which installed copies pick up through the in-app updater.
+# Builds the app payload and the tiny Antillusion-Setup.exe (a bootstrapper that downloads everything else), then
+# smoke-tests a real install on Windows. Branch pushes publish/refresh the "dev-build" prerelease; v* tags publish a stable release.
 on:
   push:
     branches: ["claude/**"]
@@ -12,6 +12,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      BUILD_CHANNEL: ${{ startsWith(github.ref, 'refs/tags/v') && 'stable' || 'dev' }}
     defaults:
       run:
         working-directory: antillusion
@@ -23,14 +25,44 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run test:unit
       - run: node build/build.js
+      - name: Installer sizes
+        shell: pwsh
+        run: Get-ChildItem ../antillusion-setup -File | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,2)}}
+      - name: Smoke-test a real install (downloads Node, Git and OmniRoute)
+        shell: pwsh
+        run: |
+          ./installer/setup.ps1 -Silent -NoLaunch -ForceRuntime -Payload (Resolve-Path ../antillusion-setup/Antillusion-app-win-x64.zip).Path
+          if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { throw "setup exited with $LASTEXITCODE" }
+          $dir = Join-Path $env:LOCALAPPDATA "Programs\Antillusion"
+          foreach ($p in @("Antillusion.exe", "resources\app\main.js", "resources\app\build-info.json", "runtime\node\node.exe", "runtime\git\cmd\git.exe", "Uninstall-Antillusion.cmd")) {
+            if (-not (Test-Path (Join-Path $dir $p))) { throw "missing after install: $p" }
+          }
+          if (-not (Test-Path (Join-Path ([Environment]::GetFolderPath("Desktop")) "Antillusion.lnk"))) { throw "desktop shortcut missing" }
+          & (Join-Path $dir "runtime\node\node.exe") -v
+          Write-Host "install OK"
+          if (Test-Path (Join-Path $env:APPDATA "npm\node_modules\omniroute\bin\omniroute.mjs")) { Write-Host "OmniRoute installed" } else { Write-Warning "OmniRoute was not installed (non-fatal)" }
       - uses: actions/upload-artifact@v4
         with:
           name: Antillusion-Setup
-          path: antillusion-setup/Antillusion-Setup.exe
+          path: |
+            antillusion-setup/Antillusion-Setup.exe
+            antillusion-setup/Antillusion-app-win-x64.zip
           if-no-files-found: error
+      - name: Publish dev-build prerelease
+        if: startsWith(github.ref, 'refs/heads/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete dev-build --cleanup-tag --yes || true
+          gh release create dev-build ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip \
+            --prerelease --target "${{ github.sha }}" --title "Antillusion dev build" \
+            --notes "Latest build of branch ${{ github.ref_name }}. Download Antillusion-Setup.exe (tiny; it downloads the rest).
+
+          commit: ${{ github.sha }}"
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "${{ github.ref_name }}" ../antillusion-setup/Antillusion-Setup.exe --title "Antillusion ${{ github.ref_name }}" --generate-notes
+        run: gh release create "${{ github.ref_name }}" ../antillusion-setup/Antillusion-Setup.exe ../antillusion-setup/Antillusion-app-win-x64.zip --title "Antillusion ${{ github.ref_name }}" --generate-notes
